@@ -1,14 +1,6 @@
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
-
-const services = [
-  "Logbook servicing",
-  "Vehicle diagnostics",
-  "Engine repairs",
-  "Brake repairs",
-  "Suspension repairs",
-  "Air conditioning",
-];
+import Services from "@/components/Services";
 
 export default function Home() {
   return (
@@ -17,24 +9,7 @@ export default function Home() {
 
       <Hero />
 
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <p className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-500">
-          Our services
-        </p>
-
-        <h2 className="mt-3 text-3xl font-black">How we can help</h2>
-
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((service) => (
-            <div
-              key={service}
-              className="rounded-lg border border-neutral-200 p-6 font-semibold"
-            >
-              {service}
-            </div>
-          ))}
-        </div>
-      </section>
+      <Services />
 
       <section className="bg-neutral-100">
         <div className="mx-auto grid max-w-6xl gap-8 px-6 py-20 md:grid-cols-3">
