@@ -33,29 +33,21 @@ const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD
 
 export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
   const isNew = !quoteId;
-  const [customer, setCustomer] = useState('Samantha Lee');
-  const [phone, setPhone] = useState('0412 884 210');
-  const [email, setEmail] = useState('samantha.lee@example.com');
-  const [vehicle, setVehicle] = useState('2018 Mazda CX-5 Touring');
-  const [registration, setRegistration] = useState('1GHT 382');
-  const [vin, setVin] = useState('JM0KF4WLA00184562');
-  const [odometer, setOdometer] = useState('126,840');
-  const [jobCard, setJobCard] = useState('JC-00418');
-  const [diagnosis, setDiagnosis] = useState('Cooling system pressure test confirmed a leak from the radiator upper tank seam. The radiator cap is not maintaining specified pressure and the upper hose is soft from age. No evidence of combustion gas in the cooling system.');
-  const [customerNotes, setCustomerNotes] = useState('Quote includes replacement radiator, cap, upper hose, coolant refill and cooling-system bleed. Any additional faults found after disassembly will be discussed before further work is carried out.');
+  const [customer, setCustomer] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [registration, setRegistration] = useState('');
+  const [vin, setVin] = useState('');
+  const [odometer, setOdometer] = useState('');
+  const [jobCard, setJobCard] = useState('');
+  const [diagnosis, setDiagnosis] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('');
   const [terms, setTerms] = useState('Quote valid for 7 days. Parts availability may affect completion time. Additional work requires customer approval.');
-  const [expiry, setExpiry] = useState('2026-08-01');
+  const [expiry, setExpiry] = useState('');
   const [gstIncluded, setGstIncluded] = useState(false);
-  const [labour, setLabour] = useState<LabourLine[]>([
-    { id: 'lab-1', description: 'Cooling system inspection and pressure test', hours: 1.0, rate: 145 },
-    { id: 'lab-2', description: 'Replace radiator, upper hose and bleed cooling system', hours: 3.5, rate: 145 },
-  ]);
-  const [parts, setParts] = useState<PartLine[]>([
-    { id: 'part-1', partNumber: 'RAD-KF-18', description: 'Radiator assembly – premium aftermarket', quantity: 1, unitPrice: 685 },
-    { id: 'part-2', partNumber: 'CH-KF-UP', description: 'Upper radiator hose', quantity: 1, unitPrice: 94.5 },
-    { id: 'part-3', partNumber: 'CAP-108KPA', description: 'Radiator cap 108 kPa', quantity: 1, unitPrice: 32 },
-    { id: 'part-4', partNumber: 'COOL-RED-5L', description: 'Long-life red coolant 5 L', quantity: 1, unitPrice: 74 },
-  ]);
+  const [labour, setLabour] = useState<LabourLine[]>([]);
+  const [parts, setParts] = useState<PartLine[]>([]);
   const [notice, setNotice] = useState('');
 
   const labourSubtotal = useMemo(() => labour.reduce((sum, line) => sum + Number(line.hours || 0) * Number(line.rate || 0), 0), [labour]);
@@ -63,8 +55,8 @@ export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
   const subtotal = labourSubtotal + partsSubtotal;
   const gst = gstIncluded ? subtotal - subtotal / 1.1 : subtotal * 0.1;
   const total = gstIncluded ? subtotal : subtotal + gst;
-  const currentId = quoteId || 'QT-00159';
-  const token = 'm7R2kP9xQ4';
+  const currentId = quoteId || 'New quote';
+  const token = '';
 
   function addLabour() { setLabour((lines) => [...lines, { id: crypto.randomUUID(), description: '', hours: 1, rate: 145 }]); }
   function addPart() { setParts((lines) => [...lines, { id: crypto.randomUUID(), partNumber: '', description: '', quantity: 1, unitPrice: 0 }]); }

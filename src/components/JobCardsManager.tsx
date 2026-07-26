@@ -15,13 +15,9 @@ import {
   Wrench,
 } from 'lucide-react';
 
-const jobs = [
-  { id: 'JC-1048', customer: 'Sarah Mitchell', vehicle: '2018 Toyota Camry', rego: '1ABC 234', complaint: 'Engine overheating after 20 minutes of driving.', stage: 'Inspection', updated: '12 min ago', tone: 'bg-sky-400/10 text-sky-300 border-sky-400/20' },
-  { id: 'JC-1047', customer: 'Daniel Wong', vehicle: '2016 Ford Ranger', rego: '1HIL 907', complaint: 'Front wheel bearing noise increasing with road speed.', stage: 'Repairing', updated: '28 min ago', tone: 'bg-red-400/10 text-red-300 border-red-400/20' },
-  { id: 'JC-1045', customer: 'Michael Brown', vehicle: '2020 Mazda 3', rego: '1MZD 302', complaint: 'Coolant leak beneath vehicle after parking.', stage: 'Waiting Parts', updated: '1 hr ago', tone: 'bg-amber-400/10 text-amber-300 border-amber-400/20' },
-  { id: 'JC-1043', customer: 'Emily Parker', vehicle: '2019 Honda Civic', rego: '1HND 445', complaint: 'Brake vibration under moderate braking.', stage: 'Final Inspection', updated: '2 hrs ago', tone: 'bg-violet-400/10 text-violet-300 border-violet-400/20' },
-  { id: 'JC-1041', customer: 'Jason Tan', vehicle: '2013 Ford Fiesta', rego: '1J1 560', complaint: 'Scheduled logbook service and driveline vibration check.', stage: 'Ready Collection', updated: 'Today, 9:10 AM', tone: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20' },
-];
+type JobCard = { id: string; customer: string; vehicle: string; rego: string; complaint: string; stage: string; updated: string; tone: string };
+
+const jobs: JobCard[] = [];
 
 const filters = ['All', 'Inspection', 'Repairing', 'Waiting Parts', 'Final Inspection', 'Ready Collection'];
 
@@ -52,10 +48,10 @@ export default function JobCardsManager() {
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ['Open jobs', '5', ClipboardList, 'text-white', 'bg-white/5'],
-          ['In inspection', '1', Search, 'text-sky-300', 'bg-sky-400/10'],
-          ['Repairing', '1', Wrench, 'text-red-300', 'bg-red-400/10'],
-          ['Ready collection', '1', CheckCircle2, 'text-emerald-300', 'bg-emerald-400/10'],
+          ['Open jobs', String(jobs.length), ClipboardList, 'text-white', 'bg-white/5'],
+          ['In inspection', String(jobs.filter((job) => job.stage === 'Inspection').length), Search, 'text-sky-300', 'bg-sky-400/10'],
+          ['Repairing', String(jobs.filter((job) => job.stage === 'Repairing').length), Wrench, 'text-red-300', 'bg-red-400/10'],
+          ['Ready collection', String(jobs.filter((job) => job.stage === 'Ready Collection').length), CheckCircle2, 'text-emerald-300', 'bg-emerald-400/10'],
         ].map(([label, value, Icon, tone, panel]) => {
           const I = Icon as typeof ClipboardList;
           return <article key={String(label)} className="rounded-[24px] border border-white/8 bg-[#101216] p-5">

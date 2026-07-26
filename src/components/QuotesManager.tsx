@@ -34,14 +34,7 @@ type QuoteRecord = {
   token: string;
 };
 
-const quotes: QuoteRecord[] = [
-  { id: 'QT-00158', customer: 'Samantha Lee', phone: '0412 884 210', vehicle: '2018 Mazda CX-5 Touring', registration: '1GHT 382', jobCard: 'JC-00418', status: 'Viewed', createdAt: '25 Jul 2026', expiresAt: '1 Aug 2026', total: 1842.5, token: 'm7R2kP9xQ4' },
-  { id: 'QT-00157', customer: 'Michael Chen', phone: '0438 207 991', vehicle: '2016 Toyota Hilux SR5', registration: '1EKK 019', jobCard: 'JC-00416', status: 'Approved', createdAt: '24 Jul 2026', expiresAt: '31 Jul 2026', total: 3275.8, token: 'b4L8vN2sT7' },
-  { id: 'QT-00156', customer: 'Olivia Martin', phone: '0403 551 604', vehicle: '2014 Volkswagen Tiguan', registration: '1DRQ 744', jobCard: 'JC-00415', status: 'Sent', createdAt: '24 Jul 2026', expiresAt: '31 Jul 2026', total: 968.0, token: 'c8W5jH1yR6' },
-  { id: 'QT-00155', customer: 'Daniel Wong', phone: '0421 790 335', vehicle: '2019 Ford Ranger Wildtrak', registration: '1HZX 226', jobCard: 'JC-00412', status: 'Draft', createdAt: '23 Jul 2026', expiresAt: '30 Jul 2026', total: 2156.2, token: 'q3F9aD7kM2' },
-  { id: 'QT-00154', customer: 'Rachel Thompson', phone: '0491 112 783', vehicle: '2013 Hyundai i30', registration: '1CQA 591', jobCard: 'JC-00408', status: 'Declined', createdAt: '22 Jul 2026', expiresAt: '29 Jul 2026', total: 742.5, token: 'z6P1uG8eK5' },
-  { id: 'QT-00153', customer: 'Aaron Singh', phone: '0408 628 019', vehicle: '2017 Subaru Forester XT', registration: '1FNM 808', jobCard: 'JC-00405', status: 'Expired', createdAt: '15 Jul 2026', expiresAt: '22 Jul 2026', total: 1295.4, token: 'n2X7sC4vB9' },
-];
+const quotes: QuoteRecord[] = [];
 
 const statusStyle: Record<QuoteStatus, string> = {
   Draft: 'border-white/10 bg-white/[0.05] text-white/55',

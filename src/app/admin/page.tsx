@@ -16,32 +16,17 @@ import {
 } from 'lucide-react';
 
 const summaryCards = [
-  { label: "Today's bookings", value: '8', detail: '3 checked in', icon: CalendarDays, tone: 'text-sky-300', panel: 'bg-sky-400/10' },
-  { label: 'Waiting for quote', value: '3', detail: 'Oldest: 1h 20m', icon: FileText, tone: 'text-amber-300', panel: 'bg-amber-400/10' },
-  { label: 'Repair in progress', value: '5', detail: '2 waiting on parts', icon: Wrench, tone: 'text-red-300', panel: 'bg-red-400/10' },
-  { label: 'Ready for collection', value: '2', detail: 'Customers notified', icon: CheckCircle2, tone: 'text-emerald-300', panel: 'bg-emerald-400/10' },
+  { label: "Today's bookings", value: '0', detail: 'No data yet', icon: CalendarDays, tone: 'text-sky-300', panel: 'bg-sky-400/10' },
+  { label: 'Waiting for quote', value: '0', detail: 'No data yet', icon: FileText, tone: 'text-amber-300', panel: 'bg-amber-400/10' },
+  { label: 'Repair in progress', value: '0', detail: 'No data yet', icon: Wrench, tone: 'text-red-300', panel: 'bg-red-400/10' },
+  { label: 'Ready for collection', value: '0', detail: 'No data yet', icon: CheckCircle2, tone: 'text-emerald-300', panel: 'bg-emerald-400/10' },
 ];
 
-const bookings = [
-  { time: '8:30', period: 'AM', customer: 'Sarah Mitchell', vehicle: '2018 Toyota Camry', rego: '1ABC 234', service: 'Logbook service', status: 'Checked in', tone: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20' },
-  { time: '9:30', period: 'AM', customer: 'Daniel Wong', vehicle: '2020 Mazda CX-5', rego: '1KLM 881', service: 'Brake noise inspection', status: 'Arriving', tone: 'bg-sky-400/10 text-sky-300 border-sky-400/20' },
-  { time: '10:30', period: 'AM', customer: 'Michael Brown', vehicle: '2016 Ford Ranger', rego: '1HIL 907', service: 'Engine diagnosis', status: 'Confirmed', tone: 'bg-white/5 text-white/55 border-white/10' },
-  { time: '1:00', period: 'PM', customer: 'Emily Parker', vehicle: '2019 Hyundai i30', rego: '1J1 560', service: 'Air conditioning', status: 'Confirmed', tone: 'bg-white/5 text-white/55 border-white/10' },
-];
+const bookings: any[] = [];
 
-const workshop = [
-  { vehicle: 'Toyota Camry', rego: '1ABC 234', job: 'JC-1048', stage: 'Inspection', description: 'Cooling system pressure test', dot: 'bg-sky-400', badge: 'text-sky-300 bg-sky-400/10' },
-  { vehicle: 'Ford Ranger', rego: '1HIL 907', job: 'JC-1047', stage: 'Repairing', description: 'Front wheel bearing replacement', dot: 'bg-red-400', badge: 'text-red-300 bg-red-400/10' },
-  { vehicle: 'Mazda 3', rego: '1MZD 302', job: 'JC-1045', stage: 'Waiting Parts', description: 'Radiator hose ordered', dot: 'bg-amber-400', badge: 'text-amber-300 bg-amber-400/10' },
-  { vehicle: 'Honda Civic', rego: '1HND 445', job: 'JC-1043', stage: 'Final Check', description: 'Road test and leak inspection', dot: 'bg-violet-400', badge: 'text-violet-300 bg-violet-400/10' },
-];
+const workshop: any[] = [];
 
-const activity = [
-  { icon: CheckCircle2, title: 'Quote approved', detail: 'Sarah Mitchell · Toyota Camry', time: '9:15 AM', tone: 'text-emerald-300 bg-emerald-400/10' },
-  { icon: Wrench, title: 'Repair started', detail: 'Ford Ranger · JC-1047', time: '9:02 AM', tone: 'text-red-300 bg-red-400/10' },
-  { icon: CalendarDays, title: 'New booking received', detail: 'Emily Parker · Hyundai i30', time: '8:46 AM', tone: 'text-sky-300 bg-sky-400/10' },
-  { icon: ShieldCheck, title: 'Vehicle ready', detail: 'Honda Civic · JC-1043', time: '8:25 AM', tone: 'text-violet-300 bg-violet-400/10' },
-];
+const activity: any[] = [];
 
 export default function AdminWorkshopPage() {
   return (
@@ -51,8 +36,8 @@ export default function AdminWorkshopPage() {
           <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-red-400">
             <CircleDot size={14} /> Live workshop
           </div>
-          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Good evening, Jason.</h1>
-          <p className="mt-2 text-sm text-white/42 sm:text-base">Wednesday, 22 July 2026 · Here’s what needs your attention.</p>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Workshop overview</h1>
+          <p className="mt-2 text-sm text-white/42 sm:text-base">Live workshop data will appear after Supabase is connected.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/75 transition hover:bg-white/[0.07] hover:text-white">
@@ -85,7 +70,7 @@ export default function AdminWorkshopPage() {
           <div className="flex items-center justify-between border-b border-white/8 px-5 py-5 sm:px-6">
             <div>
               <h2 className="text-lg font-black">Today’s bookings</h2>
-              <p className="mt-1 text-sm text-white/35">Next arrival in 32 minutes</p>
+              <p className="mt-1 text-sm text-white/35">No bookings loaded</p>
             </div>
             <Link href="/admin/bookings" className="flex items-center gap-1 text-sm font-bold text-red-400 hover:text-red-300">View all <ChevronRight size={17} /></Link>
           </div>

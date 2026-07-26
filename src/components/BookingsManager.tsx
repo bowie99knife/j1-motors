@@ -38,92 +38,7 @@ type Booking = {
   notes: string;
 };
 
-const initialBookings: Booking[] = [
-  {
-    id: 'J1B-000154',
-    dateGroup: 'Today',
-    dateLabel: 'Friday, 24 July',
-    time: '8:30 AM',
-    customer: 'Jason Tan',
-    phone: '0497 066 771',
-    email: 'jason@example.com',
-    vehicle: '2014 Toyota Camry',
-    rego: 'WA · 1ABC234',
-    service: 'Logbook Service',
-    status: 'Confirmed',
-    notes: 'Customer requests a general inspection and reports a light vibration at highway speed.',
-  },
-  {
-    id: 'J1B-000155',
-    dateGroup: 'Today',
-    dateLabel: 'Friday, 24 July',
-    time: '9:00 AM',
-    customer: 'Sarah Lim',
-    phone: '0412 889 340',
-    email: 'sarah.lim@example.com',
-    vehicle: '2018 Mazda CX-5',
-    rego: 'WA · 1GHT662',
-    service: 'Brake Inspection',
-    status: 'Waiting Confirmation',
-    notes: 'Grinding noise from the front brakes, mostly noticeable at low speed.',
-  },
-  {
-    id: 'J1B-000156',
-    dateGroup: 'Today',
-    dateLabel: 'Friday, 24 July',
-    time: '10:30 AM',
-    customer: 'Michael Wong',
-    phone: '0433 552 811',
-    email: 'michael.w@example.com',
-    vehicle: '2017 Toyota Hilux',
-    rego: 'WA · 1KDY917',
-    service: 'Engine Diagnosis',
-    status: 'Checked In',
-    notes: 'Vehicle lacks power under load and the check-engine light is on intermittently.',
-  },
-  {
-    id: 'J1B-000157',
-    dateGroup: 'Today',
-    dateLabel: 'Friday, 24 July',
-    time: '1:30 PM',
-    customer: 'Amelia Hart',
-    phone: '0406 220 174',
-    email: 'amelia.hart@example.com',
-    vehicle: '2020 Hyundai i30',
-    rego: 'WA · 1HYN441',
-    service: 'Air Conditioning',
-    status: 'Confirmed',
-    notes: 'Air conditioning is cool while driving but warms up at idle.',
-  },
-  {
-    id: 'J1B-000158',
-    dateGroup: 'Tomorrow',
-    dateLabel: 'Saturday, 25 July',
-    time: '8:30 AM',
-    customer: 'David Lee',
-    phone: '0421 700 194',
-    email: 'david.lee@example.com',
-    vehicle: '2016 Ford Ranger',
-    rego: 'WA · 1FDR805',
-    service: 'Suspension Inspection',
-    status: 'Confirmed',
-    notes: 'Knocking noise over bumps from the left front area.',
-  },
-  {
-    id: 'J1B-000159',
-    dateGroup: 'This Week',
-    dateLabel: 'Monday, 27 July',
-    time: '9:30 AM',
-    customer: 'Priya Nair',
-    phone: '0450 632 902',
-    email: 'priya.nair@example.com',
-    vehicle: '2021 Kia Cerato',
-    rego: 'WA · 1KIA210',
-    service: 'General Repair',
-    status: 'Waiting Confirmation',
-    notes: 'Customer reports a warning light and intermittent rough idle.',
-  },
-];
+const initialBookings: Booking[] = [];
 
 const filters: Filter[] = ['Today', 'Tomorrow', 'This Week', 'All', 'Waiting Confirmation', 'Confirmed', 'Checked In'];
 
@@ -139,11 +54,11 @@ export default function BookingsManager() {
   const [bookings, setBookings] = useState(initialBookings);
   const [filter, setFilter] = useState<Filter>('Today');
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState(initialBookings[0].id);
+  const [selectedId, setSelectedId] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
 
-  const selected = bookings.find((booking) => booking.id === selectedId) ?? bookings[0];
+  const selected = bookings.find((booking) => booking.id === selectedId);
 
   const visibleBookings = useMemo(() => {
     const searchTerm = query.trim().toLowerCase();
@@ -168,6 +83,7 @@ export default function BookingsManager() {
   };
 
   const updateStatus = (status: BookingStatus) => {
+    if (!selected) return;
     setBookings((current) => current.map((booking) => (booking.id === selected.id ? { ...booking, status } : booking)));
   };
 
@@ -355,8 +271,8 @@ export default function BookingsManager() {
                 <div className="flex gap-3">
                   <div className="mt-0.5 text-sky-300"><CircleAlert size={19} /></div>
                   <div>
-                    <p className="text-sm font-bold text-sky-200">Database connection comes next</p>
-                    <p className="mt-1 text-xs leading-5 text-sky-100/55">These controls currently update the demonstration data in this browser session. Supabase will make the changes permanent and connect them to the workshop and customer tracking pages.</p>
+                    <p className="text-sm font-bold text-sky-200">Not connected to the database</p>
+                    <p className="mt-1 text-xs leading-5 text-sky-100/55">Bookings will appear here after Supabase is connected.</p>
                   </div>
                 </div>
               </section>

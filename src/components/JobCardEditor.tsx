@@ -28,10 +28,10 @@ const stages = ['Inspection', 'Diagnosis', 'Waiting Quote', 'Quote Approved', 'R
 const starterInspection: InspectionItem[] = [
   { id: 1, system: 'Engine', item: 'Engine oil', findings: '', priority: 'OK' },
   { id: 2, system: 'Engine', item: 'Oil leaks', findings: '', priority: 'OK' },
-  { id: 3, system: 'Cooling', item: 'Coolant condition', findings: 'Coolant level low. Dried coolant residue around upper radiator tank.', priority: 'Repair' },
-  { id: 4, system: 'Cooling', item: 'Cooling system leaks', findings: 'Pressure test confirms seepage from radiator upper tank seam.', priority: 'Repair' },
-  { id: 5, system: 'Brakes', item: 'Front brake pads', findings: 'Approximately 6 mm remaining.', priority: 'OK' },
-  { id: 6, system: 'Suspension', item: 'Front control arm bushes', findings: 'Minor cracking, no excessive movement.', priority: 'Monitor' },
+  { id: 3, system: 'Cooling', item: 'Coolant condition', findings: '', priority: 'OK' },
+  { id: 4, system: 'Cooling', item: 'Cooling system leaks', findings: '', priority: 'OK' },
+  { id: 5, system: 'Brakes', item: 'Front brake pads', findings: '', priority: 'OK' },
+  { id: 6, system: 'Suspension', item: 'Front control arm bushes', findings: '', priority: 'OK' },
 ];
 
 export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
@@ -39,8 +39,8 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
   const [stage, setStage] = useState('Inspection');
   const [saved, setSaved] = useState(false);
   const [inspection, setInspection] = useState(starterInspection);
-  const [parts, setParts] = useState<Line[]>([{ id: 1, description: 'Radiator assembly', qty: 1, price: 365 }]);
-  const [labour, setLabour] = useState<Line[]>([{ id: 1, description: 'Replace radiator and pressure test cooling system', qty: 2.5, price: 145 }]);
+  const [parts, setParts] = useState<Line[]>([]);
+  const [labour, setLabour] = useState<Line[]>([]);
 
   const total = useMemo(() => [...parts, ...labour].reduce((sum, line) => sum + line.qty * line.price, 0), [parts, labour]);
   const updateInspection = (id: number, patch: Partial<InspectionItem>) => setInspection((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -66,8 +66,8 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
           <Link href="/admin/job-cards" className="mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/8 bg-white/[0.035] text-white/50 hover:bg-white/[0.07] hover:text-white"><ArrowLeft size={18} /></Link>
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">{isNew ? 'Create job card' : `Job ${jobId}`}</p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight">{isNew ? 'New workshop job' : '2018 Toyota Camry'}</h1>
-            <p className="mt-1 text-sm text-white/38">{isNew ? 'Enter customer and vehicle details below.' : 'WA · 1ABC 234 · Sarah Mitchell'}</p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight">{isNew ? 'New workshop job' : 'Job card'}</h1>
+            <p className="mt-1 text-sm text-white/38">{isNew ? 'Enter customer and vehicle details below.' : 'No database record loaded.'}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -82,10 +82,10 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
           <div className="rounded-[28px] border border-white/8 bg-[#101216] p-5 sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="grid flex-1 gap-4 sm:grid-cols-2">
-                <Info label="Customer" value="Sarah Mitchell" icon={UserRound} />
-                <Info label="Phone" value="0497 066 771" />
-                <Info label="Vehicle" value="2018 Toyota Camry" />
-                <Info label="Registration" value="WA · 1ABC 234" />
+                <Info label="Customer" value="—" icon={UserRound} />
+                <Info label="Phone" value="—" />
+                <Info label="Vehicle" value="—" />
+                <Info label="Registration" value="—" />
               </div>
               <div className="min-w-[250px] rounded-2xl border border-red-500/18 bg-red-950/20 p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-300">Current stage</p>
@@ -99,7 +99,7 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
           </div>
 
           <Card title="Customer complaint" icon={FileText} subtitle="Record the customer's description in their own words.">
-            <textarea defaultValue="Engine overheating while driving. Temperature gauge reaches hot after approximately 20 minutes, mainly in traffic." className="min-h-32 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none placeholder:text-white/20 focus:border-red-500/45" />
+            <textarea defaultValue="" className="min-h-32 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none placeholder:text-white/20 focus:border-red-500/45" />
           </Card>
 
           <Card title="Inspection findings" icon={ClipboardCheck} subtitle="Mechanics write findings freely and set only the priority.">
@@ -115,14 +115,14 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
           </Card>
 
           <Card title="Diagnosis" icon={Wrench} subtitle="Record the confirmed cause of the fault. No AI, no forced template.">
-            <textarea defaultValue="Radiator upper tank seam leaking under pressure, causing coolant loss and engine overheating. Thermostat operation tested normal." className="min-h-36 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none focus:border-red-500/45" />
+            <textarea defaultValue="" className="min-h-36 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none focus:border-red-500/45" />
           </Card>
 
           <LineCard title="Parts" lines={parts} kind="parts" onUpdate={updateLine} onAdd={addLine} onRemove={(id) => setParts((items) => items.filter((item) => item.id !== id))} />
           <LineCard title="Labour" lines={labour} kind="labour" onUpdate={updateLine} onAdd={addLine} onRemove={(id) => setLabour((items) => items.filter((item) => item.id !== id))} />
 
           <Card title="Recommendations" icon={ClipboardCheck} subtitle="Customer-facing recommendations written by the mechanic.">
-            <textarea defaultValue="Monitor front control arm bushes and recheck at next service." className="min-h-28 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none focus:border-red-500/45" />
+            <textarea defaultValue="" className="min-h-28 w-full rounded-2xl border border-white/8 bg-black/25 p-4 text-sm leading-6 outline-none focus:border-red-500/45" />
           </Card>
 
           <Card title="Internal notes" icon={FileText} subtitle="Workshop only. Never shown on the customer tracking page.">
@@ -152,12 +152,7 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
             <div className="rounded-[28px] border border-white/8 bg-[#101216] p-5">
               <div className="flex items-center gap-2"><History size={18} className="text-red-400" /><h2 className="font-black">Vehicle timeline</h2></div>
               <div className="mt-5 space-y-5 border-l border-white/10 pl-4">
-                {[
-                  ['22 Jul 2026', 'Cooling system diagnosis', 'Current job · JC-1048'],
-                  ['18 Jun 2026', 'Logbook service', 'Oil, filter and safety inspection'],
-                  ['15 Apr 2026', 'Front brake service', 'Pads and rotor machining'],
-                  ['12 Dec 2025', 'Battery replacement', 'Battery tested and replaced'],
-                ].map(([date, title, detail]) => <div key={date + title} className="relative"><span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-[#101216] bg-red-500" /><p className="text-[10px] font-black uppercase tracking-wider text-white/25">{date}</p><p className="mt-1 text-sm font-black">{title}</p><p className="mt-1 text-xs leading-5 text-white/33">{detail}</p></div>)}
+                {([] as string[][]).map(([date, title, detail]) => <div key={date + title} className="relative"><span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-[#101216] bg-red-500" /><p className="text-[10px] font-black uppercase tracking-wider text-white/25">{date}</p><p className="mt-1 text-sm font-black">{title}</p><p className="mt-1 text-xs leading-5 text-white/33">{detail}</p></div>)}
               </div>
             </div>
           </div>
@@ -165,7 +160,7 @@ export default function JobCardEditor({ jobId = 'NEW' }: { jobId?: string }) {
       </section>
 
       <div className="fixed bottom-4 left-4 right-4 z-30 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#111318]/95 p-3 shadow-2xl backdrop-blur md:left-auto md:right-6 md:w-auto">
-        <p className="hidden px-2 text-xs font-bold text-white/35 md:block">Changes are currently demo-only</p>
+        <p className="hidden px-2 text-xs font-bold text-white/35 md:block">Supabase connection required to save</p>
         <button onClick={save} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-sm font-black hover:bg-white/[0.09] md:flex-none"><Save size={17} /> Save</button>
         <button onClick={() => setStage('Ready Collection')} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black hover:bg-emerald-500 md:flex-none"><Check size={17} /> Ready collection</button>
       </div>
