@@ -1,9 +1,67 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { ArrowUpRight, CalendarDays, CarFront, CheckCircle2, ChevronDown, CircleGauge, Clock3, Grid2X2, List, Plus, Search, SlidersHorizontal, UserRound, Wrench } from 'lucide-react';
-import { VehicleStatus, vehicles } from './vehicleData';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight, CalendarDays, CarFront, CheckCircle2, ChevronDown, CircleGauge, Clock3, Grid2X2, List, Plus, Search, SlidersHorizontal, UserRound, Wrench, X } from 'lucide-react';
+import { VehicleRecord, VehicleStatus } from './vehicleData';
+import { supabase } from '@/lib/supabase';
+
+
+type VehicleRow = {
+  id: string;
+  customer_id: string | null;
+  registration: string;
+  state: string | null;
+  vin: string | null;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  engine: string | null;
+  transmission: string | null;
+  colour: string | null;
+  odometer: number | null;
+  customers: { id: string; first_name: string; last_name: string | null; phone: string; email: string | null } | null;
+};
+
+type CustomerOption = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  phone: string;
+};
+
+function vehicleFromRow(row: VehicleRow): VehicleRecord {
+  const ownerName = row.customers
+    ? [row.customers.first_name, row.customers.last_name].filter(Boolean).join(' ')
+    : 'No customer linked';
+  return {
+    id: row.id,
+    registration: row.registration,
+    state: row.state || 'WA',
+    year: row.year || 0,
+    make: row.make || '',
+    model: row.model || '',
+    variant: '',
+    colour: row.colour || '',
+    vin: row.vin || '',
+    engine: row.engine || '',
+    engineNumber: '',
+    transmission: row.transmission || '',
+    fuel: '',
+    odometer: row.odometer || 0,
+    status: 'Completed',
+    owner: {
+      id: row.customers?.id || '',
+      name: ownerName,
+      phone: row.customers?.phone || '',
+      email: row.customers?.email || '',
+    },
+    lastService: '—',
+    notes: '',
+    serviceHistory: [],
+    recommendations: [],
+  };
+}
 
 const filters: Array<'All' | VehicleStatus> = ['All', 'In Workshop', 'Ready for Collection', 'Booked In', 'Completed'];
 
@@ -19,10 +77,112 @@ function formatOdometer(value: number) {
 }
 
 export default function VehiclesManager() {
+  const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<(typeof filters)[number]>('All');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [sort, setSort] = useState('recent');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadData() {
+      setLoading(true);
+      setErrorMessage('');
+
+      const [vehiclesResult, customersResult] = await Promise.all([
+        supabase
+          .from('vehicles')
+          .select('id, customer_id, registration, state, vin, make, model, year, engine, transmission, colour, odometer, customers(id, first_name, last_name, phone, email)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('customers')
+          .select('id, first_name, last_name, phone')
+          .order('first_name', { ascending: true }),
+      ]);
+
+      if (!active) return;
+
+      if (vehiclesResult.error) {
+        console.error('Failed to load vehicles:', vehiclesResult.error);
+        setErrorMessage(vehiclesResult.error.message);
+        setVehicles([]);
+      } else {
+        setVehicles((vehiclesResult.data ?? []).map((row) => vehicleFromRow(row as unknown as VehicleRow)));
+      }
+
+      if (customersResult.error) {
+        console.error('Failed to load customers for vehicle form:', customersResult.error);
+        setErrorMessage((current) => current || customersResult.error!.message);
+        setCustomers([]);
+      } else {
+        setCustomers((customersResult.data ?? []) as CustomerOption[]);
+      }
+
+      setLoading(false);
+    }
+
+    loadData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function addVehicle(formData: FormData) {
+    const customerId = String(formData.get('customer_id') || '').trim();
+    const registration = String(formData.get('registration') || '').trim().toUpperCase();
+    const state = String(formData.get('state') || 'WA').trim();
+    const make = String(formData.get('make') || '').trim();
+    const model = String(formData.get('model') || '').trim();
+
+    if (!customerId || !registration || !make || !model) {
+      setErrorMessage('Please select a customer and enter registration, make and model.');
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage('');
+
+    const yearRaw = String(formData.get('year') || '').trim();
+    const odometerRaw = String(formData.get('odometer') || '').trim();
+
+    const payload = {
+      customer_id: customerId,
+      registration,
+      state,
+      vin: String(formData.get('vin') || '').trim() || null,
+      make,
+      model,
+      year: yearRaw ? Number(yearRaw) : null,
+      engine: String(formData.get('engine') || '').trim() || null,
+      transmission: String(formData.get('transmission') || '').trim() || null,
+      colour: String(formData.get('colour') || '').trim() || null,
+      odometer: odometerRaw ? Number(odometerRaw) : 0,
+    };
+
+    const { data, error } = await supabase
+      .from('vehicles')
+      .insert(payload)
+      .select('id, customer_id, registration, state, vin, make, model, year, engine, transmission, colour, odometer, customers(id, first_name, last_name, phone, email)')
+      .single();
+
+    setSaving(false);
+
+    if (error) {
+      console.error('Failed to create vehicle:', error);
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setVehicles((current) => [vehicleFromRow(data as unknown as VehicleRow), ...current]);
+    setShowAddVehicle(false);
+  }
 
   const visibleVehicles = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -44,10 +204,13 @@ export default function VehiclesManager() {
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Vehicles</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45">Find complete vehicle details, active repairs, ownership and service history in one place.</p>
         </div>
-        <button className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-sm font-bold shadow-[0_12px_32px_rgba(220,38,38,.22)] transition hover:bg-red-500">
+        <button type="button" onClick={() => setShowAddVehicle(true)} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-sm font-bold shadow-[0_12px_32px_rgba(220,38,38,.22)] transition hover:bg-red-500">
           <Plus size={18} /> Add vehicle
         </button>
       </section>
+
+      {errorMessage && <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">Supabase error: {errorMessage}</div>}
+      {loading && <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading vehicles…</div>}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -96,6 +259,131 @@ export default function VehiclesManager() {
       ) : (
         <section className="overflow-hidden rounded-[28px] border border-white/8 bg-[#0f1115]"><div className="hidden grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr_auto] gap-4 border-b border-white/8 px-5 py-4 text-[10px] font-black uppercase tracking-[0.15em] text-white/25 lg:grid"><span>Vehicle</span><span>Owner</span><span>Status</span><span>Odometer</span><span>Last service</span><span></span></div>{visibleVehicles.map((vehicle) => <Link key={vehicle.id} href={`/admin/vehicles/${vehicle.id}`} className="grid gap-4 border-b border-white/7 p-5 transition last:border-0 hover:bg-white/[0.025] lg:grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr_auto] lg:items-center"><div><p className="text-lg font-black">{vehicle.registration}</p><p className="mt-1 text-xs text-white/35">{vehicle.year} {vehicle.make} {vehicle.model}</p></div><div><p className="text-sm font-bold">{vehicle.owner.name}</p><p className="mt-1 text-xs text-white/35">{vehicle.owner.phone}</p></div><div><span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase ${statusClass[vehicle.status]}`}>{vehicle.status}</span></div><p className="text-sm font-semibold text-white/60">{formatOdometer(vehicle.odometer)}</p><p className="text-sm font-semibold text-white/60">{vehicle.lastService}</p><ArrowUpRight size={18} className="text-white/25"/></Link>)}</section>
       )}
+
+      {showAddVehicle && (
+        <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close add vehicle dialog"
+            className="absolute inset-0"
+            onClick={() => !saving && setShowAddVehicle(false)}
+          />
+          <form
+            action={addVehicle}
+            className="relative z-10 w-full max-w-3xl rounded-[30px] border border-white/10 bg-[#111318] p-5 shadow-2xl shadow-black/50 sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400">Vehicle record</p>
+                <h2 className="mt-2 text-2xl font-black">Add vehicle</h2>
+                <p className="mt-2 text-sm text-white/40">Link this vehicle to an existing customer.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                disabled={saving}
+                onClick={() => setShowAddVehicle(false)}
+                className="rounded-xl border border-white/8 p-2.5 text-white/40 hover:bg-white/5 hover:text-white disabled:opacity-40"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-7 grid gap-4 sm:grid-cols-2">
+              <label className="sm:col-span-2">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-white/35">Customer *</span>
+                <select
+                  name="customer_id"
+                  required
+                  defaultValue=""
+                  className="h-12 w-full rounded-2xl border border-white/8 bg-white/[0.035] px-4 text-sm text-white outline-none focus:border-red-500/45"
+                >
+                  <option value="" disabled className="bg-[#111318]">Select customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id} className="bg-[#111318]">
+                      {[customer.first_name, customer.last_name].filter(Boolean).join(' ')} · {customer.phone}
+                    </option>
+                  ))}
+                </select>
+                {customers.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-300/70">Create a customer first before adding a vehicle.</p>
+                )}
+              </label>
+
+              <VehicleField label="Registration" name="registration" placeholder="1ABC234" required />
+              <label>
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-white/35">State *</span>
+                <select
+                  name="state"
+                  defaultValue="WA"
+                  className="h-12 w-full rounded-2xl border border-white/8 bg-white/[0.035] px-4 text-sm text-white outline-none focus:border-red-500/45"
+                >
+                  {['WA', 'NSW', 'VIC', 'QLD', 'SA', 'TAS', 'ACT', 'NT'].map((state) => (
+                    <option key={state} value={state} className="bg-[#111318]">{state}</option>
+                  ))}
+                </select>
+              </label>
+
+              <VehicleField label="Make" name="make" placeholder="Toyota" required />
+              <VehicleField label="Model" name="model" placeholder="Camry" required />
+              <VehicleField label="Year" name="year" placeholder="2018" type="number" />
+              <VehicleField label="Odometer (km)" name="odometer" placeholder="125000" type="number" />
+              <VehicleField label="VIN" name="vin" placeholder="Vehicle identification number" />
+              <VehicleField label="Colour" name="colour" placeholder="White" />
+              <VehicleField label="Engine" name="engine" placeholder="2.5L Petrol" />
+              <VehicleField label="Transmission" name="transmission" placeholder="Automatic" />
+            </div>
+
+            <div className="mt-7 flex flex-col-reverse gap-3 border-t border-white/8 pt-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setShowAddVehicle(false)}
+                className="h-11 rounded-2xl border border-white/8 px-5 text-sm font-semibold text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || customers.length === 0}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-sm font-bold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus size={17} /> {saving ? 'Saving…' : 'Create vehicle'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
+  );
+}
+
+
+function VehicleField({
+  label,
+  name,
+  placeholder,
+  required = false,
+  type = 'text',
+}: {
+  label: string;
+  name: string;
+  placeholder: string;
+  required?: boolean;
+  type?: string;
+}) {
+  return (
+    <label>
+      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-white/35">
+        {label}{required && <span className="text-red-400"> *</span>}
+      </span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-2xl border border-white/8 bg-white/[0.035] px-4 text-sm text-white outline-none placeholder:text-white/20 focus:border-red-500/45"
+      />
+    </label>
   );
 }

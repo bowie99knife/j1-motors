@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import {
   ArrowRight,
   Car,
@@ -17,13 +18,58 @@ import {
 
 type JobCard = { id: string; customer: string; vehicle: string; rego: string; complaint: string; stage: string; updated: string; tone: string };
 
-const jobs: JobCard[] = [];
+function stageTone(stage: string) {
+  if (stage === 'Ready Collection' || stage === 'Collected') return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300';
+  if (stage === 'Repairing' || stage === 'Diagnosis') return 'border-red-400/20 bg-red-400/10 text-red-300';
+  if (stage === 'Waiting Parts' || stage === 'Waiting Quote') return 'border-amber-400/20 bg-amber-400/10 text-amber-300';
+  return 'border-sky-400/20 bg-sky-400/10 text-sky-300';
+}
 
 const filters = ['All', 'Inspection', 'Repairing', 'Waiting Parts', 'Final Inspection', 'Ready Collection'];
 
 export default function JobCardsManager() {
+  const [jobs, setJobs] = useState<JobCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
+
+  useEffect(() => {
+    let active = true;
+    async function loadJobs() {
+      setLoading(true);
+      setErrorMessage('');
+      const { data, error } = await supabase
+        .from('job_cards')
+        .select('id, job_number, complaint, status, updated_at, bookings(customers(first_name,last_name), vehicles(year,make,model,registration))')
+        .order('updated_at', { ascending: false });
+
+      if (!active) return;
+      if (error) {
+        setErrorMessage(error.message);
+        setJobs([]);
+      } else {
+        setJobs((data ?? []).map((row: any) => {
+          const customer = row.bookings?.customers;
+          const vehicle = row.bookings?.vehicles;
+          const stage = row.status || 'Inspection';
+          return {
+            id: row.id,
+            customer: customer ? [customer.first_name, customer.last_name].filter(Boolean).join(' ') : 'Unknown customer',
+            vehicle: vehicle ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : 'Unknown vehicle',
+            rego: vehicle?.registration || '',
+            complaint: row.complaint || 'No complaint recorded.',
+            stage,
+            updated: row.updated_at ? new Date(row.updated_at).toLocaleString('en-AU') : '—',
+            tone: stageTone(stage),
+          };
+        }));
+      }
+      setLoading(false);
+    }
+    loadJobs();
+    return () => { active = false; };
+  }, []);
 
   const filtered = useMemo(() => jobs.filter((job) => {
     const matchesFilter = filter === 'All' || job.stage === filter;
@@ -45,6 +91,9 @@ export default function JobCardsManager() {
           <Plus size={18} /> New job card
         </Link>
       </section>
+
+      {errorMessage && <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">Supabase error: {errorMessage}</div>}
+      {loading && <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading job cards…</div>}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
