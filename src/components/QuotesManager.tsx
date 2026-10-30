@@ -16,7 +16,8 @@ import {
   ShieldCheck,
   XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type QuoteStatus = 'Draft' | 'Sent' | 'Viewed' | 'Approved' | 'Declined' | 'Expired';
 
@@ -34,7 +35,7 @@ type QuoteRecord = {
   token: string;
 };
 
-const quotes: QuoteRecord[] = [];
+
 
 const statusStyle: Record<QuoteStatus, string> = {
   Draft: 'border-white/10 bg-white/[0.05] text-white/55',
@@ -48,9 +49,29 @@ const statusStyle: Record<QuoteStatus, string> = {
 const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
 
 export default function QuotesManager() {
+  const [quotes, setQuotes] = useState<QuoteRecord[]>([]);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'All' | QuoteStatus>('All');
   const [copied, setCopied] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('quotes').select('id,quote_number,public_token,status,created_at,total,customers(first_name,last_name,phone),vehicles(year,make,model,registration)').order('created_at',{ascending:false});
+      setQuotes((data ?? []).map((q:any)=>({
+        id:q.quote_number,
+        customer:[q.customers?.first_name,q.customers?.last_name].filter(Boolean).join(' '),
+        phone:q.customers?.phone||'',
+        vehicle:[q.vehicles?.year,q.vehicles?.make,q.vehicles?.model].filter(Boolean).join(' '),
+        registration:q.vehicles?.registration||'',
+        jobCard:'—',
+        status:q.status||'Draft',
+        createdAt:new Date(q.created_at).toLocaleDateString('en-AU'),
+        expiresAt:'30 days',
+        total:Number(q.total || 0),
+        token:q.public_token || ''
+      })));
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -68,6 +89,7 @@ export default function QuotesManager() {
   const approvalRate = decisionCount ? Math.round((approvedCount / decisionCount) * 100) : 0;
 
   async function copyLink(quote: QuoteRecord) {
+    if (!quote.token) { window.alert('This quote has no public link token. Open the quote and save it first.'); return; }
     const link = `${window.location.origin}/q/${quote.token}`;
     await navigator.clipboard.writeText(link);
     setCopied(quote.id);
@@ -137,7 +159,7 @@ export default function QuotesManager() {
               <div className="flex justify-end gap-2">
                 {quote.status !== 'Draft' && <button type="button" onClick={() => copyLink(quote)} title="Copy secure link" className="grid h-10 w-10 place-items-center rounded-xl border border-white/8 bg-white/[0.025] text-white/45 transition hover:border-white/15 hover:bg-white/[0.06] hover:text-white">{copied === quote.id ? <CheckCircle2 size={17} className="text-emerald-400" /> : <Copy size={17} />}</button>}
                 <Link href={`/admin/quotes/${quote.id}`} title="Open quote" className="grid h-10 w-10 place-items-center rounded-xl border border-white/8 bg-white/[0.025] text-white/45 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"><Eye size={17} /></Link>
-                <button type="button" title="More actions" className="grid h-10 w-10 place-items-center rounded-xl border border-white/8 bg-white/[0.025] text-white/45 transition hover:bg-white/[0.06] hover:text-white"><MoreHorizontal size={17} /></button>
+                <details className="relative z-20"><summary title="More actions" className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-xl border border-white/8 bg-white/[0.025] text-white/45 hover:bg-white/[0.06]"><MoreHorizontal size={17} /></summary><div className="absolute right-0 top-11 z-30 min-w-40 rounded-xl border border-white/10 bg-[#1b1d22] p-2 shadow-2xl"><Link href={`/admin/quotes/${quote.id}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-white/10">Open / edit quote</Link>{quote.status !== 'Draft' && <button type="button" onClick={() => copyLink(quote)} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10">Copy quote link</button>}</div></details>
               </div>
             </article>
           ))}

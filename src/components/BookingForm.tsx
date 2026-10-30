@@ -294,13 +294,24 @@ export default function BookingForm() {
   const [formData, setFormData] =
     useState<BookingFormData>(initialFormData);
   const [submitted, setSubmitted] = useState(false);
+  const [bookingNumber, setBookingNumber] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const availableModels = useMemo(
     () => (formData.make ? vehicleModels[formData.make] ?? ["Other"] : []),
     [formData.make]
   );
 
-  const minimumDate = new Date().toISOString().split("T")[0];
+
+const minimumDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Australia/Perth',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
+
 
   function updateField<K extends keyof BookingFormData>(
     field: K,
@@ -320,43 +331,96 @@ export default function BookingForm() {
     }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    console.log("Booking submitted:", formData);
-
-    setSubmitted(true);
-    setFormData(initialFormData);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!formData.service || submitting) return;
+    setSubmitting(true); setSubmitError("");
+    try {
+      const response = await fetch("/api/public/bookings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to submit booking.");
+      if (typeof payload.bookingNumber !== "string" || !payload.bookingNumber.trim()) {
+        throw new Error("Booking response is missing its reference. Please contact J1 Motors before submitting again.");
+      }
+      setBookingNumber(payload.bookingNumber);
+      setCopied(false);
+      setSubmitted(true); setFormData(initialFormData);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("Booking submission failed:", error);
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit booking. Please try again.");
+    } finally { setSubmitting(false); }
   }
 
-  if (submitted) {
-    return (
-      <div
-        data-aos="zoom-in"
-        className="rounded-[2rem] border border-emerald-500/30 bg-neutral-900/95 p-8 text-center shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-12"
-      >
-        <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
 
-        <h2 className="mt-6 text-3xl font-black text-white sm:text-4xl">
-          Booking request received
-        </h2>
+if (submitted) {
+  return (
+    <div
+      data-aos="zoom-in"
+      className="rounded-[2rem] border border-emerald-500/30 bg-neutral-900/95 p-8 text-center shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-12"
+    >
+      <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
 
-        <p className="mx-auto mt-4 max-w-xl leading-7 text-neutral-300">
-          Thank you. J1 Motors will contact you to confirm the requested date
-          and time.
+      <h2 className="mt-6 text-3xl font-black text-white sm:text-4xl">
+        Booking request received
+      </h2>
+
+      <p className="mx-auto mt-4 max-w-xl leading-7 text-neutral-300">
+        Thank you. J1 Motors will contact you to confirm the requested date
+        and time.
+      </p>
+
+      <div className="mx-auto mt-7 max-w-lg rounded-2xl border border-white/15 bg-black/40 p-5">
+        <p className="text-sm font-semibold uppercase tracking-wider text-neutral-400">
+          Your booking reference
+        </p>
+
+        <p
+          className="mt-3 break-all font-mono text-xl font-bold text-white sm:text-2xl"
+          aria-label="Booking reference"
+        >
+          {bookingNumber || "Reference unavailable"}
         </p>
 
         <button
           type="button"
-          onClick={() => setSubmitted(false)}
-          className="mt-8 rounded-full bg-red-600 px-7 py-3.5 font-bold text-white transition hover:-translate-y-0.5 hover:bg-red-700"
+          disabled={!bookingNumber}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(bookingNumber);
+              setCopied(true);
+            } catch {
+              setCopied(false);
+            }
+          }}
+          className="mt-4 rounded-full border border-white/20 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Make Another Booking
+          {copied ? "Copied!" : "Copy Booking Reference"}
         </button>
+
+        <p className="mt-3 text-sm text-neutral-400">
+          Keep this reference for enquiries. This is a request,
+          not a confirmed appointment.
+        </p>
       </div>
-    );
-  }
+
+      <button
+        type="button"
+        onClick={() => {
+          setSubmitted(false);
+          setBookingNumber("");
+          setCopied(false);
+        }}
+        className="mt-8 rounded-full bg-red-600 px-7 py-3.5 font-bold text-white transition hover:-translate-y-0.5 hover:bg-red-700"
+      >
+        Make Another Booking
+      </button>
+    </div>
+  );
+}
 
   return (
     <form
@@ -602,12 +666,18 @@ export default function BookingForm() {
         </div>
       </FormSection>
 
+      {submitError && (
+        <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {submitError}
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={!formData.service}
+        disabled={!formData.service || submitting}
         className="mt-8 w-full rounded-full bg-red-600 px-6 py-4 text-lg font-bold text-white shadow-xl shadow-red-950/30 transition hover:-translate-y-0.5 hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400 disabled:shadow-none"
       >
-        Submit Booking Request
+        {submitting ? "Submitting…" : "Submit Booking Request"}
       </button>
 
       <p className="mt-4 text-center text-sm leading-6 text-neutral-500">

@@ -18,7 +18,9 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 type BookingStatus = 'Waiting Confirmation' | 'Confirmed' | 'Checked In' | 'Cancelled' | 'Completed';
 type Filter = 'Today' | 'Tomorrow' | 'This Week' | 'All' | BookingStatus;
@@ -38,6 +40,76 @@ type Booking = {
   notes: string;
 };
 
+
+type CustomerOption = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  phone: string;
+  email: string | null;
+};
+
+type VehicleOption = {
+  id: string;
+  customer_id: string | null;
+  registration: string;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+};
+
+type BookingRow = {
+  id: string;
+  booking_number: string | null;
+  booking_date: string | null;
+  booking_time: string | null;
+  status: string | null;
+  booking_type: string | null;
+  customer_notes: string | null;
+  customers: CustomerOption | null;
+  vehicles: VehicleOption | null;
+};
+
+function getDateGroup(date: string | null): Booking['dateGroup'] {
+  if (!date) return 'This Week';
+
+  const target = new Date(`${date}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (target.getTime() === today.getTime()) return 'Today';
+  if (target.getTime() === tomorrow.getTime()) return 'Tomorrow';
+  return 'This Week';
+}
+
+function bookingFromRow(row: BookingRow): Booking {
+  const customer = row.customers
+    ? [row.customers.first_name, row.customers.last_name].filter(Boolean).join(' ')
+    : 'Unknown customer';
+
+  const vehicle = row.vehicles
+    ? [row.vehicles.year, row.vehicles.make, row.vehicles.model].filter(Boolean).join(' ')
+    : 'Unknown vehicle';
+
+  return {
+    id: row.id,
+    dateGroup: getDateGroup(row.booking_date),
+    dateLabel: row.booking_date || 'No date',
+    time: row.booking_time || '—',
+    customer,
+    phone: row.customers?.phone || '',
+    email: row.customers?.email || '',
+    vehicle,
+    rego: row.vehicles?.registration || '',
+    service: row.booking_type || 'General service',
+    status: (row.status as BookingStatus) || 'Waiting Confirmation',
+    notes: row.customer_notes || 'No customer notes.',
+  };
+}
+
 const initialBookings: Booking[] = [];
 
 const filters: Filter[] = ['Today', 'Tomorrow', 'This Week', 'All', 'Waiting Confirmation', 'Confirmed', 'Checked In'];
@@ -51,12 +123,60 @@ const statusStyle: Record<BookingStatus, string> = {
 };
 
 export default function BookingsManager() {
+  const router = useRouter();
   const [bookings, setBookings] = useState(initialBookings);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [filter, setFilter] = useState<Filter>('Today');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
+  const [editBookingOpen, setEditBookingOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadData() {
+      setLoading(true);
+      setErrorMessage('');
+
+      const [bookingsResult, customersResult, vehiclesResult] = await Promise.all([
+        supabase
+          .from('bookings')
+          .select('id, booking_number, booking_date, booking_time, status, booking_type, customer_notes, customers(id, first_name, last_name, phone, email), vehicles(id, customer_id, registration, year, make, model)')
+          .order('booking_date', { ascending: true })
+          .order('booking_time', { ascending: true }),
+        supabase.from('customers').select('id, first_name, last_name, phone, email').order('first_name'),
+        supabase.from('vehicles').select('id, customer_id, registration, year, make, model').order('registration'),
+      ]);
+
+      if (!active) return;
+
+      if (bookingsResult.error) {
+        setErrorMessage(bookingsResult.error.message);
+        setBookings([]);
+      } else {
+        setBookings((bookingsResult.data ?? []).map((row) => bookingFromRow(row as unknown as BookingRow)));
+      }
+
+      if (customersResult.error) setErrorMessage((v) => v || customersResult.error!.message);
+      else setCustomers((customersResult.data ?? []) as CustomerOption[]);
+
+      if (vehiclesResult.error) setErrorMessage((v) => v || vehiclesResult.error!.message);
+      else setVehicles((vehiclesResult.data ?? []) as VehicleOption[]);
+
+      setLoading(false);
+    }
+
+    loadData();
+    return () => { active = false; };
+  }, []);
 
   const selected = bookings.find((booking) => booking.id === selectedId);
 
@@ -82,10 +202,83 @@ export default function BookingsManager() {
     setDetailOpen(true);
   };
 
-  const updateStatus = (status: BookingStatus) => {
+  const updateStatus = async (status: BookingStatus) => {
     if (!selected) return;
+    setErrorMessage('');
+    const { error } = await supabase.from('bookings').update({ status }).eq('id', selected.id);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
     setBookings((current) => current.map((booking) => (booking.id === selected.id ? { ...booking, status } : booking)));
   };
+
+  async function editBooking(formData: FormData) {
+    if (!selected || editing) return;
+    const booking_date = String(formData.get('booking_date') || '');
+    const booking_time = String(formData.get('booking_time') || '');
+    const booking_type = String(formData.get('booking_type') || '').trim();
+    const customer_notes = String(formData.get('customer_notes') || '').trim();
+    if (!booking_date || !booking_time || !booking_type) {
+      setErrorMessage('Date, time and service are required.');
+      return;
+    }
+    setEditing(true);
+    setErrorMessage('');
+    const { error } = await supabase.from('bookings')
+      .update({ booking_date, booking_time, booking_type, customer_notes })
+      .eq('id', selected.id);
+    setEditing(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setBookings(current => current.map(b => b.id === selected.id
+      ? { ...b, dateLabel: booking_date, dateGroup: getDateGroup(booking_date), time: booking_time, service: booking_type, notes: customer_notes }
+      : b));
+    setEditBookingOpen(false);
+  }
+
+  async function addBooking(formData: FormData) {
+    const customerId = String(formData.get('customer_id') || '');
+    const vehicleId = String(formData.get('vehicle_id') || '');
+    const date = String(formData.get('booking_date') || '');
+    const time = String(formData.get('booking_time') || '');
+    const service = String(formData.get('booking_type') || '').trim();
+    const notes = String(formData.get('customer_notes') || '').trim() || null;
+
+    if (!customerId || !vehicleId || !date || !time || !service) {
+      setErrorMessage('Please complete customer, vehicle, date, time and requested service.');
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage('');
+
+    const bookingNumber = `J1-B${Date.now().toString().slice(-8)}`;
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert({
+        booking_number: bookingNumber,
+        customer_id: customerId,
+        vehicle_id: vehicleId,
+        booking_date: date,
+        booking_time: time,
+        status: 'Waiting Confirmation',
+        booking_type: service,
+        customer_notes: notes,
+      })
+      .select('id, booking_number, booking_date, booking_time, status, booking_type, customer_notes, customers(id, first_name, last_name, phone, email), vehicles(id, customer_id, registration, year, make, model)')
+      .single();
+
+    setSaving(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setBookings((current) => [...current, bookingFromRow(data as unknown as BookingRow)]);
+    setNewBookingOpen(false);
+    setSelectedCustomerId('');
+  }
 
   const stats: Array<[string, number, LucideIcon, string]> = [
     ['Today', bookings.filter((item) => item.dateGroup === 'Today').length, CalendarDays, 'Appointments scheduled'],
@@ -112,6 +305,9 @@ export default function BookingsManager() {
           <Plus size={18} /> New booking
         </button>
       </section>
+
+      {errorMessage && <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">Supabase error: {errorMessage}</div>}
+      {loading && <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading bookings…</div>}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map(([label, value, Icon, hint]) => (
@@ -258,56 +454,93 @@ export default function BookingsManager() {
                   {selected.status === 'Waiting Confirmation' && (
                     <ActionButton icon={Check} label="Confirm booking" onClick={() => updateStatus('Confirmed')} />
                   )}
-                  <ActionButton icon={FileText} label="Create quote" />
-                  <ActionButton icon={Wrench} label="Create job card" />
-                  <ActionButton icon={MoreHorizontal} label="Edit booking" />
+                  <ActionButton icon={FileText} label="Create quote" onClick={() => router.push(`/admin/quotes/new?bookingId=${encodeURIComponent(selected.id)}`)} />
+                  <ActionButton icon={Wrench} label="Create job card" onClick={() => router.push(`/admin/job-cards/new?bookingId=${encodeURIComponent(selected.id)}`)} />
+                  <ActionButton icon={MoreHorizontal} label="Edit booking" onClick={() => setEditBookingOpen(true)} />
                   {selected.status !== 'Cancelled' && (
                     <ActionButton icon={X} label="Cancel booking" danger onClick={() => updateStatus('Cancelled')} />
                   )}
                 </div>
               </section>
 
-              <section className="rounded-3xl border border-sky-400/15 bg-sky-400/[0.055] p-5">
-                <div className="flex gap-3">
-                  <div className="mt-0.5 text-sky-300"><CircleAlert size={19} /></div>
-                  <div>
-                    <p className="text-sm font-bold text-sky-200">Not connected to the database</p>
-                    <p className="mt-1 text-xs leading-5 text-sky-100/55">Bookings will appear here after Supabase is connected.</p>
-                  </div>
-                </div>
-              </section>
             </div>
           </aside>
         </div>
       )}
 
+      {editBookingOpen && selected && (
+        <div className="fixed inset-0 z-[95] grid place-items-center overflow-y-auto bg-black/80 p-4" onMouseDown={() => !editing && setEditBookingOpen(false)}>
+          <form action={editBooking} onMouseDown={e => e.stopPropagation()} className="w-full max-w-xl space-y-5 rounded-3xl border border-white/10 bg-[#0d0f12] p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black">Edit booking</h2>
+              <button type="button" onClick={() => setEditBookingOpen(false)} aria-label="Close edit booking"><X size={20}/></button>
+            </div>
+            <p className="text-sm text-white/50">{selected.customer} · {selected.rego}</p>
+            <label className="block text-sm">Date<input name="booking_date" type="date" required defaultValue={selected.dateLabel} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
+            <label className="block text-sm">Time<input name="booking_time" type="time" required defaultValue={selected.time} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
+            <label className="block text-sm">Service<input name="booking_type" required defaultValue={selected.service} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
+            <label className="block text-sm">Customer notes<textarea name="customer_notes" rows={4} defaultValue={selected.notes === 'No customer notes.' ? '' : selected.notes} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
+            {errorMessage && <p role="alert" className="text-sm text-red-300">{errorMessage}</p>}
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setEditBookingOpen(false)} className="rounded-xl border border-white/10 px-4 py-3">Cancel</button>
+              <button type="submit" disabled={editing} className="rounded-xl bg-red-600 px-5 py-3 font-bold disabled:opacity-50">{editing ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {newBookingOpen && (
-        <div className="fixed inset-0 z-[90] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={() => setNewBookingOpen(false)}>
-          <div className="w-full max-w-xl rounded-[30px] border border-white/10 bg-[#0d0f12] p-6 shadow-[0_35px_100px_rgba(0,0,0,.6)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm" onMouseDown={() => !saving && setNewBookingOpen(false)}>
+          <form action={addBooking} className="w-full max-w-2xl rounded-[30px] border border-white/10 bg-[#0d0f12] p-6 shadow-[0_35px_100px_rgba(0,0,0,.6)]" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400">Manual entry</p>
                 <h2 className="mt-1 text-2xl font-black">New booking</h2>
+                <p className="mt-2 text-sm text-white/40">Choose an existing customer and one of their vehicles.</p>
               </div>
-              <button onClick={() => setNewBookingOpen(false)} className="rounded-xl border border-white/8 p-2 text-white/50 hover:bg-white/5 hover:text-white"><X size={18} /></button>
+              <button type="button" disabled={saving} onClick={() => setNewBookingOpen(false)} className="rounded-xl border border-white/8 p-2 text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40"><X size={18} /></button>
             </div>
+
             <div className="mt-7 grid gap-4 sm:grid-cols-2">
-              {['Customer name', 'Phone number', 'Vehicle', 'Registration', 'Date', 'Time'].map((label) => (
-                <label key={label} className="text-xs font-bold text-white/45">
-                  {label}
-                  <input className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60" />
-                </label>
-              ))}
               <label className="text-xs font-bold text-white/45 sm:col-span-2">
-                Requested service
-                <input className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60" />
+                Customer *
+                <select name="customer_id" required value={selectedCustomerId} onChange={(e) => setSelectedCustomerId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60">
+                  <option value="" className="bg-[#111318]">Select customer</option>
+                  {customers.map((customer) => <option key={customer.id} value={customer.id} className="bg-[#111318]">{[customer.first_name, customer.last_name].filter(Boolean).join(' ')} · {customer.phone}</option>)}
+                </select>
+              </label>
+
+              <label className="text-xs font-bold text-white/45 sm:col-span-2">
+                Vehicle *
+                <select name="vehicle_id" required defaultValue="" className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60">
+                  <option value="" className="bg-[#111318]">Select vehicle</option>
+                  {vehicles.filter((vehicle) => !selectedCustomerId || vehicle.customer_id === selectedCustomerId).map((vehicle) => <option key={vehicle.id} value={vehicle.id} className="bg-[#111318]">{vehicle.registration} · {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}</option>)}
+                </select>
+              </label>
+
+              <label className="text-xs font-bold text-white/45">
+                Date *
+                <input name="booking_date" type="date" required className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60" />
+              </label>
+              <label className="text-xs font-bold text-white/45">
+                Time *
+                <input name="booking_time" type="time" required className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60" />
+              </label>
+              <label className="text-xs font-bold text-white/45 sm:col-span-2">
+                Requested service *
+                <input name="booking_type" required placeholder="e.g. Logbook service" className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-red-500/60" />
+              </label>
+              <label className="text-xs font-bold text-white/45 sm:col-span-2">
+                Customer notes
+                <textarea name="customer_notes" rows={3} placeholder="Optional notes…" className="mt-2 w-full resize-none rounded-xl border border-white/8 bg-white/[0.035] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-red-500/60" />
               </label>
             </div>
+
             <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setNewBookingOpen(false)} className="rounded-xl border border-white/8 px-4 py-2.5 text-sm font-bold text-white/50 hover:bg-white/5 hover:text-white">Cancel</button>
-              <button onClick={() => setNewBookingOpen(false)} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold hover:bg-red-500">Save booking</button>
+              <button type="button" disabled={saving} onClick={() => setNewBookingOpen(false)} className="rounded-xl border border-white/8 px-4 py-2.5 text-sm font-bold text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40">Cancel</button>
+              <button type="submit" disabled={saving || customers.length === 0} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Save booking'}</button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

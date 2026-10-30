@@ -22,7 +22,9 @@ import {
   UserRound,
   Wrench,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 type LabourLine = { id: string; description: string; hours: number; rate: number };
 type PartLine = { id: string; partNumber: string; description: string; quantity: number; unitPrice: number };
@@ -33,6 +35,10 @@ const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD
 
 export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
   const isNew = !quoteId;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sourceJobCardId = searchParams.get('jobCardId') || '';
+  const sourceBookingId = searchParams.get('bookingId') || '';
   const [customer, setCustomer] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -49,6 +55,15 @@ export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
   const [labour, setLabour] = useState<LabourLine[]>([]);
   const [parts, setParts] = useState<PartLine[]>([]);
   const [notice, setNotice] = useState('');
+  const [loading, setLoading] = useState(Boolean(quoteId));
+  const [errorMessage, setErrorMessage] = useState('');
+  const [dbQuoteId, setDbQuoteId] = useState('');
+  const [quoteStatus, setQuoteStatus] = useState('Draft');
+  const [linkedCustomerId, setLinkedCustomerId] = useState('');
+  const [linkedVehicleId, setLinkedVehicleId] = useState('');
+  const [linkedJobCardId, setLinkedJobCardId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [publicToken, setPublicToken] = useState('');
 
   const labourSubtotal = useMemo(() => labour.reduce((sum, line) => sum + Number(line.hours || 0) * Number(line.rate || 0), 0), [labour]);
   const partsSubtotal = useMemo(() => parts.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0), [parts]);
@@ -56,13 +71,456 @@ export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
   const gst = gstIncluded ? subtotal - subtotal / 1.1 : subtotal * 0.1;
   const total = gstIncluded ? subtotal : subtotal + gst;
   const currentId = quoteId || 'New quote';
-  const token = '';
+  const token = publicToken;
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadExistingQuote() {
+      if (!quoteId) return;
+
+      setLoading(true);
+      setErrorMessage('');
+
+      const quoteSelect = `
+        id,
+        quote_number,
+        public_token,
+        status,
+        notes,
+        subtotal,
+        gst,
+        total,
+        created_at,
+        job_card_id,
+        expiry_date,
+        terms,
+        gst_included,
+        customer_id,
+        vehicle_id,
+        customers(id, first_name, last_name, phone, email),
+        vehicles(id, registration, vin, odometer, year, make, model)
+      `;
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(quoteId);
+      const query = supabase.from('quotes').select(quoteSelect);
+
+      const { data, error } = isUuid
+        ? await query.eq('id', quoteId).maybeSingle()
+        : await query.eq('quote_number', quoteId).maybeSingle();
+
+      if (!active) return;
+
+      if (error) {
+        console.error('Failed to load quote:', error);
+        setErrorMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data) {
+        setErrorMessage('Quote not found.');
+        setLoading(false);
+        return;
+      }
+
+      const customerRow = data.customers as any;
+      const vehicleRow = data.vehicles as any;
+
+      setDbQuoteId(data.id || '');
+      setPublicToken(data.public_token || '');
+      setQuoteStatus(data.status || 'Draft');
+      setLinkedCustomerId(data.customer_id || customerRow?.id || '');
+      setLinkedVehicleId(data.vehicle_id || vehicleRow?.id || '');
+      setLinkedJobCardId(data.job_card_id || '');
+      setJobCard(data.job_card_id || '');
+
+      setCustomer(customerRow ? [customerRow.first_name, customerRow.last_name].filter(Boolean).join(' ') : '');
+      setPhone(customerRow?.phone || '');
+      setEmail(customerRow?.email || '');
+      setVehicle(vehicleRow ? [vehicleRow.year, vehicleRow.make, vehicleRow.model].filter(Boolean).join(' ') : '');
+      setRegistration(vehicleRow?.registration || '');
+      setVin(vehicleRow?.vin || '');
+      setOdometer(vehicleRow?.odometer == null ? '' : String(vehicleRow.odometer));
+      setCustomerNotes(data.notes || '');
+      setTerms(data.terms || 'Quote valid for 7 days. Parts availability may affect completion time. Additional work requires customer approval.');
+      setExpiry(data.expiry_date || '');
+      setGstIncluded(Boolean(data.gst_included));
+
+      const [labourResult, partsResult, jobResult] = await Promise.all([
+        supabase.from('quote_labour').select('id, description, hours, rate').eq('quote_id', data.id).order('created_at'),
+        supabase.from('quote_parts').select('id, part_number, description, quantity, unit_price').eq('quote_id', data.id).order('created_at'),
+        data.job_card_id
+          ? supabase.from('job_cards').select('diagnosis, job_number').eq('id', data.job_card_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null } as any),
+      ]);
+
+      if (!active) return;
+
+      if (labourResult.error) setErrorMessage(labourResult.error.message);
+      else setLabour((labourResult.data ?? []).map((line: any) => ({
+        id: line.id,
+        description: line.description,
+        hours: Number(line.hours),
+        rate: Number(line.rate),
+      })));
+
+      if (partsResult.error) setErrorMessage(partsResult.error.message);
+      else setParts((partsResult.data ?? []).map((line: any) => ({
+        id: line.id,
+        partNumber: line.part_number || '',
+        description: line.description,
+        quantity: Number(line.quantity),
+        unitPrice: Number(line.unit_price),
+      })));
+
+      if (!jobResult.error && jobResult.data) {
+        setDiagnosis(jobResult.data.diagnosis || '');
+        setJobCard(jobResult.data.job_number || data.job_card_id || '');
+      }
+
+      setLoading(false);
+    }
+
+    async function loadFromJobCard() {
+      if (!isNew || !sourceJobCardId) return;
+
+      setLoading(true);
+      setErrorMessage('');
+
+      const { data, error } = await supabase
+        .from('job_cards')
+        .select(`
+          id,
+          job_number,
+          diagnosis,
+          booking_id,
+          bookings(
+            customer_id,
+            vehicle_id,
+            customers(id, first_name, last_name, phone, email),
+            vehicles(id, registration, vin, odometer, year, make, model)
+          )
+        `)
+        .eq('id', sourceJobCardId)
+        .single();
+
+      if (!active) return;
+
+      if (error) {
+        setErrorMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      const booking = data.bookings as any;
+      const customerRow = booking?.customers;
+      const vehicleRow = booking?.vehicles;
+
+      setLinkedCustomerId(booking?.customer_id || customerRow?.id || '');
+      setLinkedVehicleId(booking?.vehicle_id || vehicleRow?.id || '');
+      setLinkedJobCardId(data.id);
+      setJobCard(data.job_number || data.id);
+      setDiagnosis(data.diagnosis || '');
+
+      setCustomer(customerRow ? [customerRow.first_name, customerRow.last_name].filter(Boolean).join(' ') : '');
+      setPhone(customerRow?.phone || '');
+      setEmail(customerRow?.email || '');
+      setVehicle(vehicleRow ? [vehicleRow.year, vehicleRow.make, vehicleRow.model].filter(Boolean).join(' ') : '');
+      setRegistration(vehicleRow?.registration || '');
+      setVin(vehicleRow?.vin || '');
+      setOdometer(vehicleRow?.odometer == null ? '' : String(vehicleRow.odometer));
+
+      const [labourResult, partsResult] = await Promise.all([
+        supabase.from('job_labour').select('id, description, qty, price').eq('job_card_id', data.id).order('created_at'),
+        supabase.from('job_parts').select('id, description, qty, price').eq('job_card_id', data.id).order('created_at'),
+      ]);
+
+      if (labourResult.error) setErrorMessage(labourResult.error.message);
+      else setLabour((labourResult.data ?? []).map((line: any) => ({
+        id: crypto.randomUUID(),
+        description: line.description,
+        hours: Number(line.qty),
+        rate: Number(line.price),
+      })));
+
+      if (partsResult.error) setErrorMessage(partsResult.error.message);
+      else setParts((partsResult.data ?? []).map((line: any) => ({
+        id: crypto.randomUUID(),
+        partNumber: '',
+        description: line.description,
+        quantity: Number(line.qty),
+        unitPrice: Number(line.price),
+      })));
+
+      setLoading(false);
+    }
+
+    async function loadFromBooking() {
+      if (!isNew || !sourceBookingId || sourceJobCardId) return;
+      setLoading(true);
+      const { data, error } = await supabase.from('bookings')
+        .select('id, status, customer_id, vehicle_id, booking_type, customer_notes, customers(first_name,last_name,phone,email), vehicles(registration,vin,odometer,year,make,model)')
+        .eq('id', sourceBookingId).maybeSingle();
+      if (!active) return;
+      if (error || !data) {
+        setErrorMessage(error?.message || 'Booking not found.');
+        setLoading(false);
+        return;
+      }
+      if (String(data.status).toLowerCase() === 'cancelled') {
+        setErrorMessage('Cannot create a quote from a cancelled booking.');
+        setLoading(false);
+        return;
+      }
+      const c: any = data.customers;
+      const v: any = data.vehicles;
+      setLinkedCustomerId(data.customer_id || '');
+      setLinkedVehicleId(data.vehicle_id || '');
+      setCustomer([c?.first_name,c?.last_name].filter(Boolean).join(' '));
+      setPhone(c?.phone || '');
+      setEmail(c?.email || '');
+      setVehicle([v?.year,v?.make,v?.model].filter(Boolean).join(' '));
+      setRegistration(v?.registration || '');
+      setVin(v?.vin || '');
+      setOdometer(v?.odometer == null ? '' : String(v.odometer));
+      setCustomerNotes(data.customer_notes || '');
+      const job = await supabase.from('job_cards').select('id,job_number,diagnosis').eq('booking_id',sourceBookingId).limit(1).maybeSingle();
+      if (job.error) setErrorMessage(job.error.message);
+      if (job.data) {
+        setLinkedJobCardId(job.data.id);
+        setJobCard(job.data.job_number || job.data.id);
+        setDiagnosis(job.data.diagnosis || '');
+      }
+      setLoading(false);
+    }
+
+    loadExistingQuote();
+    loadFromJobCard();
+    loadFromBooking();
+
+    return () => {
+      active = false;
+    };
+  }, [quoteId, isNew, sourceJobCardId, sourceBookingId]);
+
+  async function ensureLinkedRecords() {
+    let customerId = linkedCustomerId;
+    let vehicleId = linkedVehicleId;
+
+    if (!customerId) {
+      if (!phone.trim() || !customer.trim()) throw new Error('Customer name and phone are required.');
+
+      const { data: foundCustomer, error: findCustomerError } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('phone', phone.trim())
+        .maybeSingle();
+      if (findCustomerError) throw findCustomerError;
+
+      if (foundCustomer) customerId = foundCustomer.id;
+      else {
+        const pieces = customer.trim().split(/\s+/);
+        const firstName = pieces.shift() || customer.trim();
+        const lastName = pieces.join(' ') || null;
+        const { data: created, error } = await supabase
+          .from('customers')
+          .insert({ first_name: firstName, last_name: lastName, phone: phone.trim(), email: email.trim() || null })
+          .select('id')
+          .single();
+        if (error) throw error;
+        customerId = created.id;
+      }
+      setLinkedCustomerId(customerId);
+    }
+
+    if (!vehicleId) {
+      if (!registration.trim()) throw new Error('Vehicle registration is required.');
+
+      const { data: foundVehicle, error: findVehicleError } = await supabase
+        .from('vehicles')
+        .select('id')
+        .eq('registration', registration.trim().toUpperCase())
+        .maybeSingle();
+      if (findVehicleError) throw findVehicleError;
+
+      if (foundVehicle) vehicleId = foundVehicle.id;
+      else {
+        const vehicleParts = vehicle.trim().split(/\s+/);
+        const year = Number(vehicleParts[0]) || null;
+        const make = vehicleParts[1] || null;
+        const model = vehicleParts.slice(2).join(' ') || null;
+        const { data: created, error } = await supabase
+          .from('vehicles')
+          .insert({
+            customer_id: customerId,
+            registration: registration.trim().toUpperCase(),
+            state: 'WA',
+            vin: vin.trim() || null,
+            odometer: odometer ? Number(odometer) : null,
+            year,
+            make,
+            model,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        vehicleId = created.id;
+      }
+      setLinkedVehicleId(vehicleId);
+    }
+
+    return { customerId, vehicleId };
+  }
+
+  async function saveQuoteLines(quoteDbId: string) {
+    const deletions = await Promise.all([
+      supabase.from('quote_labour').delete().eq('quote_id', quoteDbId),
+      supabase.from('quote_parts').delete().eq('quote_id', quoteDbId),
+    ]);
+
+    const deleteError = deletions.find((result) => result.error)?.error;
+    if (deleteError) throw deleteError;
+
+    const labourRows = labour
+      .filter((line) => line.description.trim())
+      .map((line) => ({
+        quote_id: quoteDbId,
+        description: line.description.trim(),
+        hours: Number(line.hours || 0),
+        rate: Number(line.rate || 0),
+      }));
+
+    const partRows = parts
+      .filter((line) => line.description.trim())
+      .map((line) => ({
+        quote_id: quoteDbId,
+        part_number: line.partNumber.trim() || null,
+        description: line.description.trim(),
+        quantity: Number(line.quantity || 0),
+        unit_price: Number(line.unitPrice || 0),
+      }));
+
+    const inserts = await Promise.all([
+      labourRows.length ? supabase.from('quote_labour').insert(labourRows) : Promise.resolve({ error: null } as any),
+      partRows.length ? supabase.from('quote_parts').insert(partRows) : Promise.resolve({ error: null } as any),
+    ]);
+
+    const insertError = inserts.find((result: any) => result.error)?.error;
+    if (insertError) throw insertError;
+  }
+
+  async function saveDraft() {
+    if (saving) return;
+
+    setSaving(true);
+    setErrorMessage('');
+
+    try {
+      const { customerId, vehicleId } = await ensureLinkedRecords();
+      let targetQuoteId = dbQuoteId;
+
+      if (!targetQuoteId) {
+        const quoteNumber = `J1Q-${crypto.randomUUID()}`;
+        const newPublicToken = crypto.randomUUID();
+        const { data, error } = await supabase
+          .from('quotes')
+          .insert({
+            quote_number: quoteNumber,
+            public_token: newPublicToken,
+            customer_id: customerId,
+            vehicle_id: vehicleId,
+            job_card_id: linkedJobCardId || null,
+            status: 'Draft',
+            subtotal,
+            gst,
+            total,
+            notes: customerNotes || null,
+            terms: terms || null,
+            expiry_date: expiry || null,
+            gst_included: gstIncluded,
+          })
+          .select('id, quote_number, public_token')
+          .single();
+
+        if (error) throw error;
+
+        targetQuoteId = data.id;
+        setDbQuoteId(data.id);
+        setPublicToken(data.public_token || newPublicToken);
+        setQuoteStatus('Draft');
+
+        await saveQuoteLines(targetQuoteId);
+        flash('Draft saved');
+        router.replace(`/admin/quotes/${data.quote_number}`);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('quotes')
+        .update({
+          customer_id: customerId,
+          vehicle_id: vehicleId,
+          job_card_id: linkedJobCardId || null,
+          status: 'Draft',
+          subtotal,
+          gst,
+          total,
+          notes: customerNotes || null,
+          terms: terms || null,
+          expiry_date: expiry || null,
+          gst_included: gstIncluded,
+        })
+        .eq('id', targetQuoteId);
+
+      if (error) throw error;
+
+      await saveQuoteLines(targetQuoteId);
+      setQuoteStatus('Draft');
+      flash('Draft saved');
+    } catch (error) {
+      console.error('Failed to save quote:', error);
+      if (error && typeof error === 'object' && 'message' in error) {
+        setErrorMessage(String((error as { message: unknown }).message));
+      } else {
+        setErrorMessage('Unable to save quote.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markSent() {
+    if (!dbQuoteId || !publicToken) {
+      setErrorMessage('Save the quote first, then share its secure link with the customer.');
+      return;
+    }
+    setSaving(true);
+    setErrorMessage('');
+    const { error } = await supabase.from('quotes').update({ status: 'Sent' }).eq('id', dbQuoteId);
+    setSaving(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setQuoteStatus('Sent');
+    flash('Marked as sent. Copy the secure link and share it with the customer.');
+  }
 
   function addLabour() { setLabour((lines) => [...lines, { id: crypto.randomUUID(), description: '', hours: 1, rate: 145 }]); }
   function addPart() { setParts((lines) => [...lines, { id: crypto.randomUUID(), partNumber: '', description: '', quantity: 1, unitPrice: 0 }]); }
   function flash(message: string) { setNotice(message); window.setTimeout(() => setNotice(''), 1800); }
-  async function copyLink() { await navigator.clipboard.writeText(`${window.location.origin}/q/${token}`); flash('Secure link copied'); }
+  async function copyLink() {
+    if (!token) {
+      flash('Save the quote first to generate a secure link');
+      return;
+    }
+    await navigator.clipboard.writeText(`${window.location.origin}/q/${token}`);
+    flash('Secure link copied');
+  }
+
   async function copyMessage() {
+    if (!token) {
+      flash('Save the quote first to generate a secure link');
+      return;
+    }
     const message = `Hi ${customer.split(' ')[0]},\n\nYour repair quote for ${vehicle} (${registration}) is ready.\n\nPlease review and approve it using the secure link below:\n${window.location.origin}/q/${token}\n\nJ1 Motors\n0497 066 771`;
     await navigator.clipboard.writeText(message);
     flash('Customer message copied');
@@ -70,20 +528,30 @@ export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
 
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">
+          Loading quote…
+        </div>
+      )}
+      {errorMessage && (
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Supabase error: {errorMessage}
+        </div>
+      )}
       {notice && <div className="fixed right-5 top-24 z-50 flex items-center gap-2 rounded-2xl border border-emerald-400/25 bg-[#101713] px-4 py-3 text-sm font-bold text-emerald-300 shadow-2xl"><Check size={17} />{notice}</div>}
       <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <Link href="/admin/quotes" className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-white/38 transition hover:text-white"><ArrowLeft size={17} /> Back to quotes</Link>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{isNew ? 'New quote' : currentId}</h1>
-            <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-[11px] font-bold text-amber-300">{isNew ? 'Draft' : 'Viewed'}</span>
+            <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-[11px] font-bold text-amber-300">{isNew ? 'Draft' : quoteStatus}</span>
           </div>
           <p className="mt-2 text-sm text-white/40">Prepare a clear, customer-ready repair estimate.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => flash('Draft saved')} className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/65 transition hover:bg-white/[0.07] hover:text-white"><Save size={17} /> Save draft</button>
-          <Link href={`/q/${token}`} target="_blank" className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/65 transition hover:bg-white/[0.07] hover:text-white"><ExternalLink size={17} /> Preview</Link>
-          <button type="button" onClick={() => flash('Quote marked as sent')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold shadow-[0_12px_30px_rgba(220,38,38,.22)] transition hover:bg-red-500"><Send size={17} /> Generate & send</button>
+          <button type="button" onClick={saveDraft} disabled={saving} className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/65 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-50"><Save size={17} /> {saving ? 'Saving…' : 'Save draft'}</button>
+          <Link href={token ? `/q/${token}` : "#"} aria-disabled={!token} target={token ? "_blank" : undefined} className={`inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/65 transition hover:bg-white/[0.07] hover:text-white ${!token ? "pointer-events-none opacity-40" : ""}`}><ExternalLink size={17} /> Preview</Link>
+          <button type="button" onClick={markSent} className="inline-flex h-11 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold shadow-[0_12px_30px_rgba(220,38,38,.22)] transition hover:bg-red-500"><Send size={17} /> Mark as sent</button>
         </div>
       </section>
 
@@ -162,7 +630,7 @@ export default function QuoteBuilder({ quoteId }: QuoteBuilderProps) {
             <div className="mt-4 grid gap-2">
               <button type="button" onClick={copyLink} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-bold text-white/65 hover:bg-white/[0.07] hover:text-white"><Link2 size={17} /> Copy secure link</button>
               <button type="button" onClick={copyMessage} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-bold text-white/65 hover:bg-white/[0.07] hover:text-white"><Copy size={17} /> Copy message</button>
-              <Link href={`/q/${token}`} target="_blank" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-bold text-white/65 hover:bg-white/[0.07] hover:text-white"><ExternalLink size={17} /> Customer preview</Link>
+              <Link href={token ? `/q/${token}` : "#"} aria-disabled={!token} target={token ? "_blank" : undefined} className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-bold text-white/65 hover:bg-white/[0.07] hover:text-white ${!token ? "pointer-events-none opacity-40" : ""}`}><ExternalLink size={17} /> Customer preview</Link>
             </div>
           </div>
 
