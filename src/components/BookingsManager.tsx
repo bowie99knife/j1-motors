@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import {
   CalendarDays,
@@ -100,7 +100,7 @@ function bookingFromRow(row: BookingRow): Booking {
     id: row.id,
     dateGroup: getDateGroup(row.booking_date),
     dateLabel: row.booking_date || 'No date',
-    time: row.booking_time || 'â€”',
+    time: row.booking_time || '-',
     customer,
     phone: row.customers?.phone || '',
     email: row.customers?.email || '',
@@ -141,7 +141,7 @@ function calendarHeading(date: Date, view: CalendarView): string {
   if (view === 'Day') return date.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const start = weekStart(date);
   const end = addDays(start, 6);
-  return `${start.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} â€“ ${end.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  return `${start.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}  -  ${end.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
 
 const initialBookings: Booking[] = [];
@@ -375,7 +375,7 @@ export default function BookingsManager() {
       </section>
 
       {errorMessage && <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">Supabase error: {errorMessage}</div>}
-      {loading && <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading bookingsâ€¦</div>}
+      {loading && <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading bookings...</div>}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map(([label, value, Icon, hint]) => (
@@ -412,7 +412,7 @@ export default function BookingsManager() {
         <div className="border-b border-white/10 px-4 py-3 sm:px-5">
           <div className="relative max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16}/>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, rego, serviceâ€¦"
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, rego, service..."
               className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.035] pl-10 pr-3 text-sm outline-none placeholder:text-white/25 focus:border-red-500/60"/>
           </div>
         </div>
@@ -437,7 +437,7 @@ export default function BookingsManager() {
                         <span className="text-[10px] text-white/35">{items.length || ''}</span>
                       </button>
                       {items.slice(0, 3).map((booking) => (
-                        <button key={booking.id} type="button" onClick={() => openBooking(booking)} title={`${booking.time} ${booking.customer} Â· ${booking.rego}`}
+                        <button key={booking.id} type="button" onClick={() => openBooking(booking)} title={`${booking.time} ${booking.customer}  |  ${booking.rego}`}
                           className={`mb-1 block w-full truncate rounded-md border px-1.5 py-1 text-left text-[10px] font-semibold ${statusStyle[booking.status]}`}>
                           {booking.time.slice(0,5)} {booking.rego || booking.customer}
                         </button>
@@ -468,7 +468,7 @@ export default function BookingsManager() {
                           <span className="block text-xs font-black">{booking.time.slice(0,5)}</span>
                           <span className="mt-1 block break-words text-xs font-bold">{booking.rego || booking.vehicle}</span>
                           <span className="mt-1 block break-words text-[11px] opacity-80">{booking.customer}</span>
-                          {calendarView === 'Day' && <span className="mt-1 block text-[11px] opacity-70">{booking.service} Â· {booking.status}</span>}
+                          {calendarView === 'Day' && <span className="mt-1 block text-[11px] opacity-70">{booking.service}  |  {booking.status}</span>}
                         </button>
                       ))}
                       {items.length === 0 && <p className="mb-3 text-xs text-white/30">No bookings</p>}
@@ -478,7 +478,7 @@ export default function BookingsManager() {
                 })}
               </div>
             )}
-            <p className="mt-3 text-xs text-white/35">Appointments show start times only. Usual workshop hours: Monâ€“Fri, 8:30 AMâ€“5:00 PM. Click a booking to edit.</p>
+            <p className="mt-3 text-xs text-white/35">Appointments show start times only. Usual workshop hours: Mon - Fri, 8:30 AM - 5:00 PM. Click a booking to edit.</p>
           </div>
         )}
       </section>
@@ -492,7 +492,7 @@ export default function BookingsManager() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search customer, phone, registration or bookingâ€¦"
+                placeholder="Search customer, phone, registration or booking..."
                 className="h-12 w-full rounded-2xl border border-white/8 bg-white/[0.035] pl-11 pr-4 text-sm outline-none placeholder:text-white/25 focus:border-red-500/60"
               />
             </div>
@@ -587,7 +587,7 @@ export default function BookingsManager() {
                   <span className={`w-fit rounded-full border px-3 py-1.5 text-xs font-bold ${statusStyle[selected.status]}`}>{selected.status}</span>
                 </div>
                 <div className="mt-5 grid gap-3 border-t border-white/8 pt-5 sm:grid-cols-2">
-                  <Info icon={CalendarDays} label="Appointment" value={`${selected.dateLabel} Â· ${selected.time}`} />
+                  <Info icon={CalendarDays} label="Appointment" value={`${selected.dateLabel}  |  ${selected.time}`} />
                   <Info icon={Wrench} label="Requested service" value={selected.service} />
                 </div>
               </section>
@@ -637,7 +637,7 @@ export default function BookingsManager() {
               <h2 className="text-xl font-black">Edit booking</h2>
               <button type="button" onClick={() => setEditBookingOpen(false)} aria-label="Close edit booking"><X size={20}/></button>
             </div>
-            <p className="text-sm text-white/50">{selected.customer} Â· {selected.rego}</p>
+            <p className="text-sm text-white/50">{selected.customer}  |  {selected.rego}</p>
             <label className="block text-sm">Date<input name="booking_date" type="date" required defaultValue={selected.dateLabel} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
             <label className="block text-sm">Time<input name="booking_time" type="time" required defaultValue={selected.time} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
             <label className="block text-sm">Service<input name="booking_type" required defaultValue={selected.service} className="mt-2 w-full rounded-xl border border-white/10 bg-[#191b20] p-3"/></label>
@@ -645,7 +645,7 @@ export default function BookingsManager() {
             {errorMessage && <p role="alert" className="text-sm text-red-300">{errorMessage}</p>}
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setEditBookingOpen(false)} className="rounded-xl border border-white/10 px-4 py-3">Cancel</button>
-              <button type="submit" disabled={editing} className="rounded-xl bg-red-600 px-5 py-3 font-bold disabled:opacity-50">{editing ? 'Savingâ€¦' : 'Save changes'}</button>
+              <button type="submit" disabled={editing} className="rounded-xl bg-red-600 px-5 py-3 font-bold disabled:opacity-50">{editing ? 'Saving...' : 'Save changes'}</button>
             </div>
           </form>
         </div>
@@ -668,7 +668,7 @@ export default function BookingsManager() {
                 Customer *
                 <select name="customer_id" required value={selectedCustomerId} onChange={(e) => setSelectedCustomerId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60">
                   <option value="" className="bg-[#111318]">Select customer</option>
-                  {customers.map((customer) => <option key={customer.id} value={customer.id} className="bg-[#111318]">{[customer.first_name, customer.last_name].filter(Boolean).join(' ')} Â· {customer.phone}</option>)}
+                  {customers.map((customer) => <option key={customer.id} value={customer.id} className="bg-[#111318]">{[customer.first_name, customer.last_name].filter(Boolean).join(' ')}  |  {customer.phone}</option>)}
                 </select>
               </label>
 
@@ -676,7 +676,7 @@ export default function BookingsManager() {
                 Vehicle *
                 <select name="vehicle_id" required defaultValue="" className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-white outline-none focus:border-red-500/60">
                   <option value="" className="bg-[#111318]">Select vehicle</option>
-                  {vehicles.filter((vehicle) => !selectedCustomerId || vehicle.customer_id === selectedCustomerId).map((vehicle) => <option key={vehicle.id} value={vehicle.id} className="bg-[#111318]">{vehicle.registration} Â· {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}</option>)}
+                  {vehicles.filter((vehicle) => !selectedCustomerId || vehicle.customer_id === selectedCustomerId).map((vehicle) => <option key={vehicle.id} value={vehicle.id} className="bg-[#111318]">{vehicle.registration}  |  {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}</option>)}
                 </select>
               </label>
 
@@ -694,13 +694,13 @@ export default function BookingsManager() {
               </label>
               <label className="text-xs font-bold text-white/45 sm:col-span-2">
                 Customer notes
-                <textarea name="customer_notes" rows={3} placeholder="Optional notesâ€¦" className="mt-2 w-full resize-none rounded-xl border border-white/8 bg-white/[0.035] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-red-500/60" />
+                <textarea name="customer_notes" rows={3} placeholder="Optional notes..." className="mt-2 w-full resize-none rounded-xl border border-white/8 bg-white/[0.035] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-red-500/60" />
               </label>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" disabled={saving} onClick={() => setNewBookingOpen(false)} className="rounded-xl border border-white/8 px-4 py-2.5 text-sm font-bold text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40">Cancel</button>
-              <button type="submit" disabled={saving || customers.length === 0} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Savingâ€¦' : 'Save booking'}</button>
+              <button type="submit" disabled={saving || customers.length === 0} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving...' : 'Save booking'}</button>
             </div>
           </form>
         </div>
