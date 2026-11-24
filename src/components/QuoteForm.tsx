@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase";
 import {
   ChangeEvent,
   DragEvent,
@@ -122,6 +123,11 @@ export default function QuoteForm() {
   const [formData, setFormData] = useState<QuoteFormData>(initialFormData);
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [submittedReference, setSubmittedReference] = useState("");
+  const [uploadSummary, setUploadSummary] = useState("");
+  const [submitProgress, setSubmitProgress] = useState("");
+  const submissionLock = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [fileError, setFileError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,13 +158,13 @@ export default function QuoteForm() {
     const accepted: UploadedPhoto[] = [];
     for (const file of incoming.slice(0, remainingSlots)) {
       const extension = file.name.split(".").pop()?.toLowerCase();
-      const validType = file.type.startsWith("image/") || extension === "heic" || extension === "heif";
+      const validType = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(file.type) || ((!file.type || file.type === "application/octet-stream") && (extension === "heic" || extension === "heif"));
 
       if (!validType) {
         setFileError("Only JPG, PNG, WEBP, HEIC and HEIF image files are accepted.");
         continue;
       }
-      if (file.size > MAX_FILE_SIZE) {
+      if (file.size === 0 || file.size > MAX_FILE_SIZE) {
         setFileError("Each photo must be smaller than 10 MB.");
         continue;
       }
@@ -196,17 +202,130 @@ export default function QuoteForm() {
     });
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function imageMime(file: File): string {
+    if (["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(file.type)) {
+      return file.type;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "heic") return "image/heic";
+    if (ext === "heif") return "image/heif";
+    throw new Error(`Unsupported image type: ${file.name}`);
+  }
+
+  async function photoApi(body: Record<string, string>) {
+    const response = await fetch("/api/public/quote-photos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "Photo upload request failed.");
+    }
+    return result as {
+      ok: true;
+      uploadId?: string;
+      path?: string;
+      signedToken?: string;
+      verified?: boolean;
+    };
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submissionLock.current) return;
     if (!formData.category) {
       document.getElementById("repair-category")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
+    if (formData.contactMethod === "email" && !formData.email.trim()) {
+      setSubmitError("Please enter your email address for email contact.");
+      return;
+    }
 
-    const reference = `J1Q-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-    console.log("Quote request submitted:", { ...formData, photos: photos.map((photo) => photo.file) });
-    setSubmittedReference(reference);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    submissionLock.current = true;
+    setSubmitting(true);
+    setSubmitError("");
+    setSubmitProgress("Submitting quote request...");
+    let reference = "";
+
+    try {
+      const response = await fetch("/api/public/quote-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok || typeof payload.reference !== "string") {
+        throw new Error(payload.error || "Unable to submit quote request.");
+      }
+      reference = payload.reference;
+
+      if (photos.length === 0) {
+        setUploadSummary("No photos were attached to this request.");
+      } else if (typeof payload.uploadToken !== "string") {
+        setUploadSummary("Your quote was received, but photo uploads were unavailable. Please contact the workshop and provide your reference number.");
+      } else {
+        let completed = 0;
+        const failures: string[] = [];
+
+        for (let index = 0; index < photos.length; index++) {
+          const photo = photos[index];
+          setSubmitProgress(`Uploading photo ${index + 1} of ${photos.length}...`);
+          try {
+            const mime = imageMime(photo.file);
+            const reservation = await photoApi({
+              action: "reserve",
+              uploadToken: payload.uploadToken,
+              mime,
+            });
+            if (!reservation.path || !reservation.signedToken || !reservation.uploadId) {
+              throw new Error("Invalid upload authorisation.");
+            }
+            const { error: uploadError } = await supabase.storage
+              .from("quote-photos")
+              .uploadToSignedUrl(reservation.path, reservation.signedToken, photo.file, {
+                contentType: mime,
+                upsert: false,
+              });
+            if (uploadError) throw uploadError;
+
+            const verification = await photoApi({
+              action: "verify",
+              uploadToken: payload.uploadToken,
+              uploadId: reservation.uploadId,
+            });
+            if (!verification.verified) throw new Error("Photo could not be verified.");
+            completed++;
+          } catch (error) {
+            console.error("Quote photo upload failed:", error);
+            failures.push(photo.file.name);
+          }
+        }
+
+        if (failures.length === 0) {
+          setUploadSummary(`All ${completed} photo${completed === 1 ? "" : "s"} uploaded and verified successfully.`);
+        } else {
+          setUploadSummary(`${completed} of ${photos.length} photos were confirmed. The following photos were not confirmed: ${failures.join(", ")}. Your quote was received; please contact J1 Motors with your reference number about the missing photos. Do not submit another quote.`);
+        }
+      }
+      setSubmittedReference(reference);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error: unknown) {
+      console.error("Quote submission failed:", error);
+      if (reference) {
+        setSubmittedReference(reference);
+        setUploadSummary("Your quote was received, but the photo process could not be completed. Please contact J1 Motors with your reference number. Do not submit another quote.");
+      } else {
+        setSubmitError(error instanceof Error ? error.message : "Submit failed. Please check with the workshop before retrying if you are unsure whether your request was received.");
+      }
+    } finally {
+      setSubmitProgress("");
+      setSubmitting(false);
+      submissionLock.current = false;
+    }
   }
 
   function resetForm() {
@@ -214,6 +333,9 @@ export default function QuoteForm() {
     setPhotos([]);
     setFormData(initialFormData);
     setSubmittedReference("");
+    setUploadSummary("");
+    setSubmitProgress("");
+    setSubmitError("");
     setFileError("");
   }
 
@@ -226,6 +348,7 @@ export default function QuoteForm() {
         <p className="mx-auto mt-4 max-w-xl leading-7 text-neutral-300">
           Thank you. J1 Motors will review the information and contact you using your preferred contact method.
         </p>
+        {uploadSummary && <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-amber-200" role="status">{uploadSummary}</p>}
         <div className="mx-auto mt-7 max-w-sm rounded-2xl border border-white/10 bg-black/30 p-5">
           <p className="text-sm text-neutral-500">Reference Number</p>
           <p className="mt-1 text-xl font-black tracking-wider text-white">{submittedReference}</p>
@@ -343,8 +466,10 @@ export default function QuoteForm() {
         Submitting this form sends a quote request only. Final pricing may require vehicle inspection, diagnostic testing or confirmation of parts and labour.
       </div>
 
-      <button type="submit" disabled={formData.contactMethod === "email" && !formData.email} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-4 text-base font-black uppercase tracking-wider text-white transition hover:-translate-y-0.5 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0">
-        Request Quote
+      {submitError && <p className="mt-4 text-sm text-red-400" role="alert">{submitError}</p>}
+      {submitProgress && <p className="mt-4 text-sm text-neutral-300" role="status">{submitProgress}</p>}
+      <button type="submit" disabled={submitting || (formData.contactMethod === "email" && !formData.email)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-4 text-base font-black uppercase tracking-wider text-white transition hover:-translate-y-0.5 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0">
+        {submitting ? (submitProgress || "Submitting...") : "Request Quote"}
       </button>
     </form>
   );

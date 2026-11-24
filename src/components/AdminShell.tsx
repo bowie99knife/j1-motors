@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   CalendarDays,
   CarFront,
@@ -15,9 +15,11 @@ import {
   Settings,
   Users,
   Wrench,
+  LogOut,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 const navigation = [
   { name: 'Workshop', href: '/admin', icon: Gauge },
@@ -31,8 +33,83 @@ const navigation = [
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [staffName, setStaffName] = useState('Staff');
+  const [staffRole, setStaffRole] = useState('staff');
+  const [staffInitials, setStaffInitials] = useState('ST');
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkStaff() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (!session?.user) {
+        router.replace('/staff');
+        return;
+      }
+
+      const { data: profile, error } = await supabase
+        .from('staff_profiles')
+        .select('full_name, role, active')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (error || !profile || !profile.active) {
+        await supabase.auth.signOut();
+        router.replace('/staff');
+        return;
+      }
+
+      const name = profile.full_name || session.user.email || 'Staff';
+      setStaffName(name);
+      setStaffRole(profile.role || 'staff');
+      setStaffInitials(
+        name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part: string) => part[0]?.toUpperCase())
+          .join('') || 'ST'
+      );
+      setAuthLoading(false);
+    }
+
+    checkStaff();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) router.replace('/staff');
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [router]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace('/staff');
+    router.refresh();
+  }
+
+  if (authLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#08090b] text-white">
+        <div className="text-center">
+          <Wrench className="mx-auto h-8 w-8 animate-pulse text-red-500" />
+          <p className="mt-4 text-sm text-white/40">Checking staff access…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#08090b] text-white">
@@ -139,10 +216,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </div>
           <div className="ml-auto flex items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="text-sm font-bold">Jason</p>
-              <p className="text-xs text-white/35">Workshop admin</p>
+              <p className="text-sm font-bold">{staffName}</p>
+              <p className="text-xs capitalize text-white/35">{staffRole}</p>
             </div>
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-red-500/30 bg-red-500/10 text-sm font-black text-red-400">JT</div>
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-red-500/30 bg-red-500/10 text-sm font-black text-red-400">{staffInitials}</div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Sign out"
+              aria-label="Sign out"
+              className="grid h-10 w-10 place-items-center rounded-xl border border-white/8 bg-white/[0.03] text-white/45 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <LogOut size={17} />
+            </button>
           </div>
         </header>
         <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8">{children}</main>

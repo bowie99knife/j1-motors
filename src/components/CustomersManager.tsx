@@ -22,7 +22,8 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type CustomerStatus = 'Active' | 'Follow-up' | 'Inactive';
 
@@ -42,7 +43,22 @@ type Customer = {
   note?: string;
 };
 
-const seedCustomers: Customer[] = [];
+type CustomerRow = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  created_at: string | null;
+};
+
+function customerFromRow(row: CustomerRow): Customer {
+  const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+  const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
+  return { id: row.id, name: name || 'Unnamed customer', initials: initials || '--', phone: row.phone, email: row.email || 'No email recorded', suburb: row.address || 'Suburb not recorded', vehicles: [], jobs: 0, lifetimeSpend: 0, lastVisit: 'No visits recorded', status: 'Active', note: row.notes || undefined };
+}
 
 const currency = new Intl.NumberFormat('en-AU', {
   style: 'currency',
@@ -57,13 +73,29 @@ const statusStyles: Record<CustomerStatus, string> = {
 };
 
 export default function CustomersManager() {
-  const [customers, setCustomers] = useState(seedCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'All' | CustomerStatus>('All');
   const [sort, setSort] = useState<'Recent' | 'Name' | 'Spend'>('Recent');
   const [view, setView] = useState<'cards' | 'compact'>('cards');
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCustomers() {
+      setLoading(true); setErrorMessage('');
+      const { data, error } = await supabase.from('customers').select('id, first_name, last_name, phone, email, address, notes, created_at').order('created_at', { ascending: false });
+      if (!active) return;
+      if (error) { console.error('Failed to load customers:', error); setErrorMessage(error.message); setCustomers([]); }
+      else { setCustomers((data ?? []).map((row) => customerFromRow(row as CustomerRow))); }
+      setLoading(false);
+    }
+    loadCustomers();
+    return () => { active = false; };
+  }, []);
 
   const filteredCustomers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -92,34 +124,20 @@ export default function CustomersManager() {
   const activeCount = customers.filter((customer) => customer.status === 'Active').length;
   const followUpCount = customers.filter((customer) => customer.status === 'Follow-up').length;
 
-  function addCustomer(formData: FormData) {
+  async function addCustomer(formData: FormData) {
     const name = String(formData.get('name') || '').trim();
     const phone = String(formData.get('phone') || '').trim();
     if (!name || !phone) return;
-
-    const initials = name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join('');
-
-    setCustomers((current) => [
-      {
-        id: `CUS-${String(current.length + 125).padStart(5, '0')}`,
-        name,
-        initials,
-        phone,
-        email: String(formData.get('email') || '').trim() || 'No email recorded',
-        suburb: String(formData.get('suburb') || '').trim() || 'Suburb not recorded',
-        vehicles: [],
-        jobs: 0,
-        lifetimeSpend: 0,
-        lastVisit: 'New customer',
-        status: 'Active',
-        note: String(formData.get('note') || '').trim() || undefined,
-      },
-      ...current,
-    ]);
+    setErrorMessage('');
+    const nameParts = name.split(/\s+/);
+    const firstName = nameParts.shift() || name;
+    const lastName = nameParts.join(' ') || null;
+    const email = String(formData.get('email') || '').trim() || null;
+    const suburb = String(formData.get('suburb') || '').trim() || null;
+    const note = String(formData.get('note') || '').trim() || null;
+    const { data, error } = await supabase.from('customers').insert({ first_name: firstName, last_name: lastName, phone, email, address: suburb, notes: note }).select('id, first_name, last_name, phone, email, address, notes, created_at').single();
+    if (error) { console.error('Failed to create customer:', error); setErrorMessage(error.message); return; }
+    setCustomers((current) => [customerFromRow(data as CustomerRow), ...current]);
     setShowNewCustomer(false);
   }
 
@@ -146,6 +164,13 @@ export default function CustomersManager() {
           </button>
         </div>
       </section>
+
+      {errorMessage && (
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">Supabase error: {errorMessage}</div>
+      )}
+      {loading && (
+        <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3 text-sm text-white/45">Loading customers…</div>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Users} label="Total customers" value={String(customers.length)} detail={`${activeCount} currently active`} />
@@ -305,7 +330,7 @@ function CustomerCard({ customer, compact }: { customer: Customer; compact: bool
               </div>
               <p className="mt-1 text-xs font-semibold text-white/25">{customer.id}</p>
             </div>
-            <button type="button" aria-label="Customer actions" className="rounded-xl p-2 text-white/25 transition hover:bg-white/5 hover:text-white"><MoreHorizontal size={19} /></button>
+            <details className="relative z-20"><summary aria-label="Customer actions" className="list-none cursor-pointer rounded-xl p-2 text-white/40 hover:bg-white/5 hover:text-white"><MoreHorizontal size={19} /></summary><div className="absolute right-0 top-10 z-30 min-w-44 rounded-xl border border-white/10 bg-[#1b1d22] p-2 shadow-2xl"><Link href={`/admin/customers/${customer.id}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-white/10">View profile</Link><a href={`tel:${customer.phone.replace(/\s/g, '')}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-white/10">Call customer</a>{customer.email && customer.email !== 'No email recorded' && <a href={`mailto:${customer.email}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-white/10">Email customer</a>}</div></details>
           </div>
 
           {compact ? (

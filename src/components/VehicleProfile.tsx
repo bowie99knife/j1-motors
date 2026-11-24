@@ -1,59 +1,60 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { ArrowLeft, CalendarClock, CarFront, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Copy, Edit3, FileText, Fuel, Gauge, Mail, MapPin, MessageSquareText, Phone, Plus, Printer, Settings2, ShieldAlert, UserRound, Wrench } from 'lucide-react';
-import { getVehicle, Priority, VehicleStatus } from './vehicleData';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
-const statusClass: Record<VehicleStatus, string> = {
-  'In Workshop': 'border-amber-400/25 bg-amber-400/10 text-amber-300',
-  'Ready for Collection': 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
-  'Completed': 'border-sky-400/25 bg-sky-400/10 text-sky-300',
-  'Booked In': 'border-violet-400/25 bg-violet-400/10 text-violet-300',
-};
-const priorityClass: Record<Priority, string> = { Urgent: 'bg-red-500/10 text-red-300 border-red-500/20', Soon: 'bg-amber-400/10 text-amber-300 border-amber-400/20', Monitor: 'bg-sky-400/10 text-sky-300 border-sky-400/20' };
-const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
-
-export default function VehicleProfile({ id }: { id: string }) {
-  const vehicle = getVehicle(id);
-  const [tab, setTab] = useState<'history' | 'recommendations' | 'notes'>('history');
-  const [copied, setCopied] = useState(false);
-  const totalSpend = vehicle.serviceHistory.reduce((sum, item) => sum + item.total, 0);
-  const copyVin = async () => { await navigator.clipboard?.writeText(vehicle.vin); setCopied(true); setTimeout(() => setCopied(false), 1400); };
-
-  const specs = [
-    ['VIN', vehicle.vin, CarFront], ['Engine', vehicle.engine, Settings2], ['Engine number', vehicle.engineNumber, Wrench], ['Transmission', vehicle.transmission, Gauge], ['Fuel type', vehicle.fuel, Fuel], ['Odometer', `${vehicle.odometer.toLocaleString('en-AU')} km`, CircleDollarSign],
-  ] as const;
-
-  return <div className="space-y-6">
-    <Link href="/admin/vehicles" className="inline-flex items-center gap-2 text-sm font-semibold text-white/40 transition hover:text-white"><ArrowLeft size={17}/> Back to vehicles</Link>
-
-    <section className="overflow-hidden rounded-[30px] border border-white/8 bg-[#0f1115] shadow-[0_30px_80px_rgba(0,0,0,.22)]">
-      <div className="relative border-b border-white/8 p-5 sm:p-7"><div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,.15),transparent_38%)]"/><div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between"><div className="flex flex-col gap-4 sm:flex-row sm:items-center"><div className="grid h-16 w-16 shrink-0 place-items-center rounded-[22px] border border-red-500/20 bg-red-500/10 text-red-400"><CarFront size={30}/></div><div><div className="flex flex-wrap items-center gap-3"><span className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black tracking-[0.16em] text-white/45">{vehicle.state}</span><h1 className="text-3xl font-black tracking-tight sm:text-4xl">{vehicle.registration}</h1><span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] ${statusClass[vehicle.status]}`}>{vehicle.status}</span></div><p className="mt-2 text-lg font-bold text-white/80">{vehicle.year} {vehicle.make} {vehicle.model} <span className="font-medium text-white/35">· {vehicle.variant}</span></p><p className="mt-1 text-sm text-white/35">{vehicle.colour} · {vehicle.fuel}</p></div></div><div className="flex flex-wrap gap-2"><button className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/9 bg-white/[0.035] px-4 text-sm font-bold text-white/65 hover:bg-white/[0.07] hover:text-white"><Edit3 size={16}/> Edit vehicle</button><button onClick={() => window.print()} className="grid h-11 w-11 place-items-center rounded-2xl border border-white/9 bg-white/[0.035] text-white/50 hover:bg-white/[0.07] hover:text-white" aria-label="Print vehicle record"><Printer size={17}/></button><Link href="/admin/job-cards/new" className="inline-flex h-11 items-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-bold hover:bg-red-500"><Plus size={17}/> New job card</Link></div></div></div>
-      <div className="grid divide-y divide-white/7 sm:grid-cols-3 sm:divide-x sm:divide-y-0"><div className="p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/25">Lifetime workshop spend</p><p className="mt-2 text-xl font-black">{money.format(totalSpend)}</p></div><div className="p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/25">Service records</p><p className="mt-2 text-xl font-black">{vehicle.serviceHistory.length}</p></div><div className="p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/25">Last workshop visit</p><p className="mt-2 text-xl font-black">{vehicle.lastService}</p></div></div>
-    </section>
-
-    <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-      <div className="space-y-6">
-        {vehicle.currentJob && <section className="rounded-[28px] border border-amber-400/15 bg-gradient-to-br from-amber-400/[0.065] to-[#0f1115] p-5 sm:p-6"><div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><Wrench size={17}/><p className="text-xs font-black uppercase tracking-[0.17em]">Active workshop job</p></div><h2 className="mt-3 text-xl font-black">{vehicle.currentJob.title}</h2><p className="mt-1 text-sm text-white/40">{vehicle.currentJob.number} · Opened {vehicle.currentJob.opened}</p></div><Link href={`/admin/job-cards/${vehicle.currentJob.id}`} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-black hover:bg-white/90">Open job card <ChevronRight size={17}/></Link></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/7 bg-black/15 p-4"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/25">Current stage</p><p className="mt-2 font-bold text-amber-200">{vehicle.currentJob.stage}</p></div><div className="rounded-2xl border border-white/7 bg-black/15 p-4"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/25">Estimated completion</p><p className="mt-2 font-bold">{vehicle.currentJob.estimatedCompletion}</p></div></div></section>}
-
-        <section className="rounded-[28px] border border-white/8 bg-[#0f1115] p-5 sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[0.17em] text-red-400">Vehicle details</p><h2 className="mt-2 text-xl font-black">Specifications</h2></div><button onClick={copyVin} className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs font-bold text-white/45 hover:text-white"><Copy size={14}/>{copied ? 'Copied' : 'Copy VIN'}</button></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{specs.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/7 bg-white/[0.025] p-4"><div className="flex items-center gap-2 text-white/25"><Icon size={15}/><p className="text-[10px] font-black uppercase tracking-[0.14em]">{label}</p></div><p className="mt-3 break-words text-sm font-bold leading-5 text-white/75">{value}</p></div>)}</div></section>
-
-        <section className="overflow-hidden rounded-[28px] border border-white/8 bg-[#0f1115]"><div className="flex gap-1 overflow-x-auto border-b border-white/8 p-3">{([['history','Service history'],['recommendations','Recommendations'],['notes','Internal notes']] as const).map(([key,label]) => <button key={key} onClick={() => setTab(key)} className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-black transition ${tab === key ? 'bg-white text-black' : 'text-white/40 hover:bg-white/[0.05] hover:text-white'}`}>{label}{key === 'recommendations' && vehicle.recommendations.length > 0 ? ` (${vehicle.recommendations.length})` : ''}</button>)}</div>
-          {tab === 'history' && <div className="p-5 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-black">Complete workshop history</h2><p className="mt-1 text-sm text-white/35">Every repair and service linked to its original job card.</p></div></div>{vehicle.serviceHistory.length ? <div className="space-y-3">{vehicle.serviceHistory.map((record, index) => <article key={record.id} className="relative rounded-2xl border border-white/7 bg-white/[0.022] p-4 sm:p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="flex gap-4"><div className={`mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-2xl ${record.status === 'Completed' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{record.status === 'Completed' ? <CheckCircle2 size={18}/> : <Wrench size={18}/>}</div><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-black">{record.title}</h3><span className="text-xs font-bold text-red-400">{record.jobCard}</span></div><p className="mt-1 text-xs text-white/35">{record.date} · {record.odometer.toLocaleString('en-AU')} km</p><div className="mt-4 grid gap-3 md:grid-cols-2"><div><p className="text-[10px] font-black uppercase tracking-[0.13em] text-white/25">Customer complaint</p><p className="mt-1 text-sm leading-6 text-white/55">{record.complaint}</p></div><div><p className="text-[10px] font-black uppercase tracking-[0.13em] text-white/25">Work performed</p><p className="mt-1 text-sm leading-6 text-white/55">{record.workPerformed}</p></div></div></div></div><div className="flex items-center justify-between gap-4 lg:block lg:text-right"><p className="text-sm font-black">{record.total ? money.format(record.total) : 'In progress'}</p><Link href={`/admin/job-cards/${record.jobCard}`} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-white/40 hover:text-white">View job <ChevronRight size={14}/></Link></div></div></article>)}</div> : <EmptyState icon={ClipboardList} title="No service history" text="Completed job cards will appear here automatically."/>}</div>}
-          {tab === 'recommendations' && <div className="p-5 sm:p-6"><div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">Open recommendations</h2><p className="mt-1 text-sm text-white/35">Items recorded by the workshop for future attention.</p></div><button className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 text-xs font-bold text-white/55"><Plus size={15}/> Add</button></div>{vehicle.recommendations.length ? <div className="space-y-3">{vehicle.recommendations.map((item) => <div key={item.id} className="rounded-2xl border border-white/7 bg-white/[0.022] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-black">{item.title}</h3><p className="mt-2 text-sm leading-6 text-white/50">{item.detail}</p><p className="mt-3 text-xs text-white/25">Recorded {item.created}</p></div><span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${priorityClass[item.priority]}`}>{item.priority}</span></div></div>)}</div> : <EmptyState icon={CheckCircle2} title="No open recommendations" text="This vehicle has no outstanding workshop recommendations."/>}</div>}
-          {tab === 'notes' && <div className="p-5 sm:p-6"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-black">Workshop-only notes</h2><p className="mt-1 text-sm text-white/35">These notes are never shown to the customer.</p></div><MessageSquareText className="text-white/20"/></div><textarea defaultValue={vehicle.notes} rows={7} className="w-full resize-none rounded-2xl border border-white/8 bg-white/[0.025] p-4 text-sm leading-6 text-white/65 outline-none focus:border-red-500/50"/><div className="mt-3 flex justify-end"><button className="h-10 rounded-xl bg-white px-4 text-xs font-black text-black">Save notes</button></div></div>}
-        </section>
-      </div>
-
-      <aside className="space-y-6">
-        <section className="rounded-[28px] border border-white/8 bg-[#0f1115] p-5"><div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-red-500/10 text-red-400"><UserRound size={20}/></div><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-white/25">Registered owner</p><h2 className="mt-1 font-black">{vehicle.owner.name}</h2></div></div><div className="mt-5 space-y-2"><a href={`tel:${vehicle.owner.phone}`} className="flex items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-sm text-white/55 hover:bg-white/[0.05] hover:text-white"><Phone size={16}/>{vehicle.owner.phone}</a><a href={`mailto:${vehicle.owner.email}`} className="flex items-center gap-3 rounded-2xl bg-white/[0.025] p-3 text-sm text-white/55 hover:bg-white/[0.05] hover:text-white"><Mail size={16}/><span className="truncate">{vehicle.owner.email}</span></a></div><Link href={`/admin/customers/${vehicle.owner.id}`} className="mt-4 flex h-10 items-center justify-center gap-2 rounded-xl border border-white/8 text-xs font-black text-white/55 hover:bg-white/[0.05] hover:text-white">Open customer profile <ChevronRight size={15}/></Link></section>
-        <section className="rounded-[28px] border border-white/8 bg-[#0f1115] p-5"><h2 className="font-black">Quick actions</h2><div className="mt-4 space-y-2"><QuickAction icon={ClipboardList} label="Create job card" href="/admin/job-cards/new"/><QuickAction icon={FileText} label="Create quote" href="/admin/quotes/new"/><QuickAction icon={CalendarClock} label="Book next service" href="/admin/bookings"/></div></section>
-        <section className="rounded-[28px] border border-white/8 bg-[#0f1115] p-5"><div className="flex items-center gap-2"><ShieldAlert size={17} className="text-amber-300"/><h2 className="font-black">Vehicle alerts</h2></div><div className="mt-4 space-y-3">{vehicle.recommendations.length ? vehicle.recommendations.slice(0,2).map((item) => <div key={item.id} className="rounded-2xl border border-white/7 bg-white/[0.02] p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-bold">{item.title}</p><span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${priorityClass[item.priority]}`}>{item.priority}</span></div></div>) : <p className="text-sm text-white/35">No active alerts.</p>}</div></section>
-      </aside>
-    </div>
-  </div>;
+type Vehicle = {id:string;customer_id:string|null;registration:string;state:string|null;vin:string|null;year:number|null;make:string|null;model:string|null;engine:string|null;transmission:string|null;colour:string|null;odometer:number|null};
+type Booking = {id:string;booking_number:string|null;booking_date:string|null;booking_type:string|null;status:string|null};
+type Job = {id:string;job_number:string|null;status:string|null;booking_id:string|null;complaint:string|null;diagnosis:string|null;repair_notes:string|null};
+export default function VehicleProfile({id}:{id:string}){
+ const [vehicle,setVehicle]=useState<Vehicle|null>(null);
+ const [owner,setOwner]=useState<{id:string;first_name:string;last_name:string|null;phone:string}|null>(null);
+ const [bookings,setBookings]=useState<Booking[]>([]);
+ const [jobs,setJobs]=useState<Job[]>([]);
+ const [editing,setEditing]=useState(false);
+ const [saving,setSaving]=useState(false);
+ const [loading,setLoading]=useState(true);
+ const [error,setError]=useState('');
+ const [form,setForm]=useState({registration:'',state:'',vin:'',year:'',make:'',model:'',engine:'',transmission:'',colour:'',odometer:''});
+ useEffect(()=>{let active=true;async function load(){
+  setLoading(true);setError('');
+  const v=await supabase.from('vehicles').select('id,customer_id,registration,state,vin,year,make,model,engine,transmission,colour,odometer').eq('id',id).maybeSingle();
+  if(!active)return;
+  if(v.error||!v.data){setError(v.error?.message||'Vehicle not found');setLoading(false);return;}
+  const r=v.data as Vehicle;setVehicle(r);
+  setForm({registration:r.registration||'',state:r.state||'',vin:r.vin||'',year:String(r.year??''),make:r.make||'',model:r.model||'',engine:r.engine||'',transmission:r.transmission||'',colour:r.colour||'',odometer:String(r.odometer??'')});
+  const [b,c]=await Promise.all([
+   supabase.from('bookings').select('id,booking_number,booking_date,booking_type,status').eq('vehicle_id',id).order('booking_date',{ascending:false}),
+   r.customer_id?supabase.from('customers').select('id,first_name,last_name,phone').eq('id',r.customer_id).maybeSingle():Promise.resolve({data:null,error:null})
+  ]);
+  if(!active)return;
+  if(b.error)setError(b.error.message);else setBookings(b.data||[]);
+  if(c.error)setError(c.error.message);else setOwner(c.data);
+  if(b.data?.length){
+   const j=await supabase.from('job_cards').select('id,job_number,status,booking_id,complaint,diagnosis,repair_notes').in('booking_id',b.data.map(x=>x.id));
+   if(!active)return;
+   if(j.error)setError(j.error.message);else setJobs(j.data||[]);
+  }
+  setLoading(false);
+ }load();return()=>{active=false}},[id]);
+ async function save(){
+  if(!vehicle||saving)return;
+  if(!form.registration.trim()){setError('Registration is required');return;}
+  setSaving(true);setError('');
+  const patch={registration:form.registration.trim().toUpperCase(),state:form.state||null,vin:form.vin||null,year:form.year?Number(form.year):null,make:form.make||null,model:form.model||null,engine:form.engine||null,transmission:form.transmission||null,colour:form.colour||null,odometer:form.odometer?Number(form.odometer):null};
+  const {data,error:e}=await supabase.from('vehicles').update(patch).eq('id',id).select('id,customer_id,registration,state,vin,year,make,model,engine,transmission,colour,odometer').single();
+  setSaving(false);
+  if(e){setError(e.message);return;}setVehicle(data as Vehicle);setEditing(false);
+ }
+ const field=(label:string,key:keyof typeof form)=><label className="block text-sm text-white/60">{label}<input value={form[key]} onChange={e=>setForm(x=>({...x,[key]:e.target.value}))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#181b20] p-3 text-white"/></label>;
+ return <div className="space-y-6 pb-12">
+ <Link href="/admin/vehicles" className="text-sm text-white/60 hover:text-white">← Back to vehicles</Link>
+ {loading?<p>Loading vehicle…</p>:!vehicle?<p role="alert" className="text-red-300">{error||'Vehicle not found'}</p>:<>
+ <section className="rounded-3xl border border-white/10 bg-[#0f1115] p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-red-400">Vehicle profile</p><h1 className="mt-2 text-3xl font-black">{vehicle.registration}</h1><p className="mt-2 text-white/60">{[vehicle.year,vehicle.make,vehicle.model].filter(Boolean).join(' ')}</p><p className="mt-2 text-sm text-white/50">VIN: {vehicle.vin||'Not recorded'} · Odometer: {vehicle.odometer==null?'Not recorded':vehicle.odometer.toLocaleString('en-AU')+' km'}</p></div><button onClick={()=>setEditing(x=>!x)} className="rounded-xl bg-red-600 px-5 py-3 font-bold">{editing?'Close editor':'Edit vehicle'}</button></div>
+ {editing&&<div className="mt-6 grid gap-4 sm:grid-cols-2">{field('Registration','registration')}{field('State','state')}{field('VIN','vin')}{field('Year','year')}{field('Make','make')}{field('Model','model')}{field('Engine','engine')}{field('Transmission','transmission')}{field('Colour','colour')}{field('Odometer (km)','odometer')}<button onClick={save} disabled={saving} className="rounded-xl bg-red-600 px-5 py-3 font-bold disabled:opacity-50">{saving?'Saving…':'Save vehicle'}</button></div>}
+ {error&&<p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}</section>
+ <section className="rounded-3xl border border-white/10 p-6"><h2 className="mb-3 text-xl font-bold">Owner</h2>{owner?<Link href={'/admin/customers/'+owner.id} className="text-red-300 hover:underline">{owner.first_name} {owner.last_name||''} · {owner.phone}</Link>:<p className="text-white/50">No owner linked</p>}</section>
+ <section className="rounded-3xl border border-white/10 p-6"><h2 className="mb-3 text-xl font-bold">Complete visit history</h2>{bookings.length?bookings.map(b=><div key={b.id} className="border-t border-white/10 py-4"><p className="font-semibold">{b.booking_number||b.id} · {b.booking_date||'No date'}</p><p className="text-sm text-white/50">{b.booking_type||'Service'} · {b.status||'Unknown status'}</p>{jobs.filter(j=>j.booking_id===b.id).map(j=><div key={j.id} className="mt-3 rounded-xl bg-white/[.035] p-4"><Link href={'/admin/job-cards/'+j.id} className="font-semibold text-red-300 hover:underline">{j.job_number||j.id} · {j.status}</Link>{j.complaint&&<p className="mt-2 text-sm text-white/60">Complaint: {j.complaint}</p>}{j.diagnosis&&<p className="mt-1 text-sm text-white/60">Diagnosis: {j.diagnosis}</p>}{j.repair_notes&&<p className="mt-1 whitespace-pre-wrap text-sm text-white/60">Repair: {j.repair_notes}</p>}</div>)}</div>):<p className="text-white/50">No visits recorded</p>}</section>
+ </>}</div>;
 }
-
-function QuickAction({ icon: Icon, label, href }: { icon: typeof ClipboardList; label: string; href: string }) { return <Link href={href} className="flex h-11 items-center gap-3 rounded-2xl bg-white/[0.025] px-3 text-sm font-bold text-white/55 transition hover:bg-white/[0.06] hover:text-white"><Icon size={17}/>{label}<ChevronRight size={15} className="ml-auto text-white/20"/></Link>; }
-function EmptyState({ icon: Icon, title, text }: { icon: typeof ClipboardList; title: string; text: string }) { return <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center"><Icon size={34} className="mx-auto text-white/15"/><h3 className="mt-3 font-black">{title}</h3><p className="mt-1 text-sm text-white/35">{text}</p></div>; }
